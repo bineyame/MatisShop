@@ -22,7 +22,9 @@ Which courier is behind it is a gateway configuration value
 """,
     "author": "Mati Retail Platform",
     "license": "LGPL-3",
-    "depends": ["delivery", "stock"],
+    # stock_delivery contributes carrier_id / carrier_tracking_ref to
+    # stock.picking and dispatches <delivery_type>_send_shipping.
+    "depends": ["delivery", "stock", "stock_delivery"],
     "data": [
         "data/delivery_carrier_data.xml",
         "views/delivery_carrier_views.xml",

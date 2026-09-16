@@ -177,26 +177,35 @@ class PaymentTransaction(models.Model):
     # ------------------------------------------------------------------
     # Refunds
     # ------------------------------------------------------------------
-    def _send_refund_request(self, **kwargs):
-        if self.provider_code != "integration_gateway":
-            return super()._send_refund_request(**kwargs)
+    def _send_refund_request(self, amount_to_refund=None):
+        """Refund through the gateway.
 
-        refund_transaction = super()._send_refund_request(**kwargs)
-        source = self.source_transaction_id or self
-        gateway_payment = self.env["payment.gateway.client"].get_payment_by_reference(
-            self.provider_id, source.reference
-        )
-        response = self.env["payment.gateway.client"].refund_payment(
+        Odoo's base implementation creates a CHILD transaction and returns it;
+        the refund's own state belongs on that child, not on the source
+        transaction, which is already `done`.
+        """
+        if self.provider_code != "integration_gateway":
+            return super()._send_refund_request(amount_to_refund=amount_to_refund)
+
+        refund_tx = super()._send_refund_request(amount_to_refund=amount_to_refund)
+
+        client = self.env["payment.gateway.client"]
+        gateway_payment = client.get_payment_by_reference(self.provider_id, self.reference)
+        response = client.refund_payment(
             self.provider_id,
             gateway_payment["id"],
             {
-                "idempotency_key": f"odoo-refund-{self.reference}",
-                "amount": f"{abs(self.currency_id.round(self.amount)):.2f}",
-                "reason": self.reference,
+                # Keyed on the refund transaction, so retrying a refund cannot
+                # refund twice.
+                "idempotency_key": f"odoo-refund-{refund_tx.reference}",
+                "amount": f"{abs(refund_tx.currency_id.round(refund_tx.amount)):.2f}",
+                "reason": refund_tx.reference,
             },
         )
+
         if response.get("status") in ("refunded", "partially_refunded"):
-            self._set_done()
+            refund_tx.provider_reference = response.get("provider_transaction_id")
+            refund_tx._set_done()
         else:
-            self._set_error(response.get("last_error") or _("refund was rejected"))
-        return refund_transaction
+            refund_tx._set_error(response.get("last_error") or _("refund was rejected"))
+        return refund_tx

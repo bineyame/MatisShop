@@ -190,6 +190,7 @@ Honest accounting of what was executed on the build machine.
 | What | Result |
 |---|---|
 | `gateway/tests` + `tests/contract` (110 tests) | **pass**, run repeatedly |
+| Odoo API assumptions checked against the pinned source | **3 real bugs found and fixed** — see below |
 | Alembic migration → schema equivalence | **pass** |
 | EAN-13 generation for all 8 variants | **pass** — valid and unique |
 | Known-good EAN-13 check digits used in tests | **pass** |
@@ -213,33 +214,68 @@ Docker is not installed on the build machine, so none of this ran:
 | POS session/order creation path | no Docker | the least certain code in the repository |
 
 **Anyone re-running this should start with `make up && make bootstrap`, then
-`make test-odoo`, then `make verify`, and expect to fix Odoo 18 API details.**
+`make test-odoo`, then `make verify`.** Every Odoo API used has since been
+checked against the pinned source (see below), so the remaining risk is
+runtime behaviour rather than wrong method and field names.
 
-### The specific things most likely to need fixing
+### API verification against the pinned Odoo source
 
-Ranked by my own confidence, lowest first:
+Docker was unavailable, but the pinned revision's source is not. Every
+Odoo API this platform depends on was checked by reading
+`odoo/odoo@d60ab9c` directly. **Three real bugs were found and fixed this
+way, before a container was ever started.**
 
-1. **POS order creation in `tools/verify_demo.py`.** Creating a paid `pos.order`
-   programmatically touches `action_pos_order_paid()` and
-   `_create_order_picking()`, both of which have moved between Odoo versions.
-   The script guards `_create_order_picking` with `hasattr`, but the field set
-   on `pos.order` / `pos.order.line` may still need adjusting.
-2. **`pos.order.sync_from_ui` in `addons/et_fiscal_odoo/tests/test_pos_fiscal_flow.py`.**
-   Odoo 18 renamed the UI sync entry point; if this test fails, that is why.
-   The *production* trigger deliberately does not depend on it — it hooks
-   `action_pos_order_paid`, which is far more stable.
-3. **Chart-of-accounts loading.** `account.chart.template.try_loading("generic_coa", ...)`
-   signature and template code. If POS cannot open a session, this is the cause.
-4. **View xpaths into Odoo core forms.** They are anchored to `//sheet` and
-   `//notebook` rather than named pages precisely to survive version drift, but
-   `payment.payment_provider_form` uses a named group that may have moved.
-5. **`pos.config` and `product.pricelist` field names.** The two known-fragile
-   ones are already guarded or removed; others may exist.
-6. **`res.config.settings` `<app>`/`<block>`/`<setting>` markup.** Correct for
-   Odoo 17/18, but settings markup churns.
+Bugs found and fixed:
 
-None of these are architectural. They are version-detail fixes in code whose
-shape is right.
+| Bug | Detail | Fix |
+|---|---|---|
+| `pos.order.amount_paid` is a plain stored field, **not** computed from `pos.payment` | `action_pos_order_paid()` raises *"Order … is not fully paid"* unless it is set explicitly. `verify_demo.py` created the order with `amount_paid = 0`, then a payment, then called it — guaranteed failure at demo step 8. | set `amount_paid` explicitly after creating the payment |
+| `external_delivery_gateway` had a missing dependency | `carrier_id` and `carrier_tracking_ref` on `stock.picking` come from **`stock_delivery`**, not `delivery` or `stock`. The module would have failed to install. | added `stock_delivery` to `depends` |
+| refund set state on the wrong record | `_send_refund_request()` returns a **child** transaction; the refund's state belongs on that child, not on the source transaction which is already `done`. The signature was also `**kwargs` instead of `amount_to_refund=None`. | act on `refund_tx`, match the core signature |
+
+Confirmed correct (no change needed):
+
+| Assumption | Verified |
+|---|---|
+| `action_pos_order_paid`, `_create_order_picking`, `sync_from_ui`, `_should_create_picking_real_time` | all exist on `pos.order` |
+| POS decrements stock immediately | `point_of_sale_update_stock_quantities` defaults to `'real'`, so `update_stock_at_closing` is False |
+| `_create_order_picking` uses `config_id.picking_type_id` | confirmed — this is what binds a sale to *that shop's* stock |
+| `try_loading(template_code, company, install_demo=False, ...)` | signature matches exactly |
+| storable products are `type='consu'` + `is_storable=True` | `is_storable` is contributed by the `stock` module, which we depend on |
+| `pos.order.line` fields (`qty`, `price_unit`, `price_subtotal`, `price_subtotal_incl`, `full_product_name`, `tax_ids`, `tax_ids_after_fiscal_position`) | all exist |
+| `pos.config` fields (`picking_type_id`, `use_pricelist`, `pricelist_id`, `available_pricelist_ids`, `payment_method_ids`) | all exist |
+| `pos.session.action_pos_session_open` / `_closing_control` | exist; our `*args` override is signature-compatible |
+| `stock.quant._get_available_quantity(product, location, …)` | positional call is correct |
+| `product.pricelist._get_product_price(product, *args)` | quantity-as-positional is correct |
+| `account.move.pos_order_ids` | exists — the double-fiscalization guard works |
+| payment hooks (`_send_payment_request`, `_get_specific_rendering_values`, `_get_tx_from_notification_data`, `_process_notification_data`, `_set_*`) | all exist |
+| `delivery.carrier` dispatch is `getattr(self, '%s_rate_shipment' % delivery_type)` | our `integration_gateway_*` naming is correct |
+| every inherited view xmlid | `view_pos_pos_form`, `view_delivery_carrier_form`, `payment_provider_form`, `payment_transaction_form`, `view_picking_form`, `view_move_form`, `report_invoice_document`, `res_config_settings_view_form` — all present |
+| every xpath anchor | `//sheet`, `//notebook`, `name="provider_credentials"` — all present |
+| settings `<app>`/`<block>`/`<setting>` markup | matches how `point_of_sale` writes it (`data-string` added to match) |
+| `/web/health` route | exists — the compose healthcheck is valid |
+| `quote_plus` in the QWeb context, `/report/barcode/?barcode_type=QR&…` | both exist; the QR image markup matches Odoo's own usage |
+
+### What could still need fixing
+
+Reading source proves signatures and field names; it does not prove runtime
+behaviour. Remaining risk, highest first:
+
+1. **`pos.order` creation as a whole.** Every individual field and method is
+   confirmed, but constructing a paid order outside the POS front end
+   exercises constraints and computes that only run at runtime.
+2. **`sync_from_ui` payload shape** in
+   `addons/et_fiscal_odoo/tests/test_pos_fiscal_flow.py`. The method exists;
+   the exact dict Odoo 18 expects may differ from `create_ui_order_data`'s
+   output. The *production* trigger deliberately does not depend on it — it
+   hooks `action_pos_order_paid`.
+3. **Chart-of-accounts application.** The signature is right; whether
+   `generic_coa` yields a usable cash journal for POS is a runtime question.
+4. **Module install ordering and demo seeding end to end**, including the ETB
+   currency switch and the warehouse rename.
+5. **Docker builds themselves** — never executed.
+
+None of these are architectural.
 
 ---
 
@@ -388,7 +424,9 @@ shape is right.
 
 No hiding them.
 
-1. **The Odoo side has never been run.** The single largest caveat. See
+1. **The Odoo side has never been run.** The single largest caveat. Every API
+   it uses has been verified against the pinned Odoo source, and three real
+   bugs were fixed that way, but reading source is not running code. See
    [Verification status](#verification-status).
 2. **Fiscalization is not compliant and is not certified.** Mock provider,
    invented IRN and QR formats, no legal validity.

@@ -6,8 +6,8 @@
         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
-                <app string="Ethiopian Fiscalization" name="et_fiscal_odoo"
-                     logo="/base/static/img/icons/settings.png">
+                <app data-string="Ethiopian Fiscalization" string="Ethiopian Fiscalization"
+                     name="et_fiscal_odoo">
                     <block title="Fiscalization" name="et_fiscal_block">
                         <setting id="et_fiscal_enabled_setting"
                                  string="Enable Fiscalization"

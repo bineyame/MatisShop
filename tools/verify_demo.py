@@ -446,6 +446,13 @@ def step_pos_sale(expect_fiscal_failure=False):
                 "amount": total,
             }
         )
+
+    # pos.order.amount_paid is a plain stored field, NOT computed from
+    # pos.payment records - the POS front end sends it in the order payload.
+    # Creating a payment therefore does not update it, and
+    # action_pos_order_paid() would raise "Order ... is not fully paid".
+    order.amount_paid = total
+
     order.action_pos_order_paid()
     if hasattr(order, "_create_order_picking"):
         order._create_order_picking()
