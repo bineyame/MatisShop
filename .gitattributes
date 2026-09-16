@@ -1,0 +1,14 @@
+# Everything in this repo is consumed by Linux containers. A CRLF checkout on
+# Windows would produce `#!/bin/bash\r` shebangs and break the images.
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.xml text eol=lf
+*.csv text eol=lf
+*.conf text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+*.png binary
+*.jpg binary
