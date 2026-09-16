@@ -1,0 +1,113 @@
+# =============================================================================
+# Mati Retail Platform - local development topology
+#
+#   postgres   two logical databases: `odoo` (business) and `integration_gateway`
+#   odoo       Odoo 18 Community, built from a PINNED git revision, core untouched
+#   gateway    Integration Gateway (FastAPI) owning all provider communication
+#
+# The gateway NEVER connects to the Odoo database and Odoo never connects to the
+# gateway database. They talk over HTTP contracts only. See docs/architecture.md.
+# =============================================================================
+
+name: mati-retail-platform
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mati-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      GATEWAY_DB_NAME: ${GATEWAY_DB_NAME:-integration_gateway}
+      ODOO_DB_NAME: ${ODOO_DB_NAME:-odoo}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    ports:
+      # Exposed on localhost only - never bind 0.0.0.0 for a database in dev.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-odoo} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  odoo:
+    build:
+      context: ./odoo
+      args:
+        # Pinned Odoo 18 Community revision - see docs/decisions/ADR-011-odoo-source-pinning.md
+        ODOO_REVISION: ${ODOO_REVISION:-d60ab9c928f0ea3d31ef11fc54bf3b9549b082e8}
+    container_name: mati-odoo
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HOST: postgres
+      PORT: 5432
+      USER: ${POSTGRES_USER:-odoo}
+      PASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_password_change_me}
+      ODOO_DB_NAME: ${ODOO_DB_NAME:-odoo}
+      ADMIN_PASSWD: ${ODOO_ADMIN_PASSWD:-admin_master_dev}
+      # Consumed by et_fiscal_odoo through ir.config_parameter defaults
+      GATEWAY_BASE_URL: http://gateway:8000
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:-dev-gateway-api-key-change-me}
+    volumes:
+      - ./addons:/mnt/extra-addons:ro
+      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+      - ./tools:/mnt/tools:ro
+      - odoo-filestore:/var/lib/odoo
+    ports:
+      - "${ODOO_PORT:-8069}:8069"
+      - "${ODOO_LONGPOLLING_PORT:-8072}:8072"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8069/web/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./gateway
+    container_name: mati-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GATEWAY_ENV: ${GATEWAY_ENV:-development}
+      GATEWAY_LOG_LEVEL: ${GATEWAY_LOG_LEVEL:-INFO}
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:-dev-gateway-api-key-change-me}
+      GATEWAY_WEBHOOK_SECRET: ${GATEWAY_WEBHOOK_SECRET:-dev-webhook-secret-change-me}
+      GATEWAY_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-odoo}:${POSTGRES_PASSWORD:-odoo_dev_password_change_me}@postgres:5432/${GATEWAY_DB_NAME:-integration_gateway}
+      GATEWAY_MAX_ATTEMPTS: ${GATEWAY_MAX_ATTEMPTS:-3}
+      GATEWAY_RETRY_BASE_DELAY_MS: ${GATEWAY_RETRY_BASE_DELAY_MS:-100}
+      GATEWAY_PROVIDER_TIMEOUT_SECONDS: ${GATEWAY_PROVIDER_TIMEOUT_SECONDS:-10}
+      FISCAL_PROVIDER: ${FISCAL_PROVIDER:-mock}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+      DELIVERY_PROVIDER: ${DELIVERY_PROVIDER:-mock}
+      MOCK_FISCAL_FAILURE_MODE: ${MOCK_FISCAL_FAILURE_MODE:-false}
+      MOCK_FISCAL_IRN_PREFIX: ${MOCK_FISCAL_IRN_PREFIX:-ET-DEMO}
+      MOCK_PAYMENT_MODE: ${MOCK_PAYMENT_MODE:-auto_success}
+      MOCK_DELIVERY_MODE: ${MOCK_DELIVERY_MODE:-auto_advance}
+    volumes:
+      # Live reload during development; the image is self-contained without it.
+      - ./gateway/app:/srv/gateway/app:ro
+      - ./gateway/migrations:/srv/gateway/migrations:ro
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  odoo-filestore:

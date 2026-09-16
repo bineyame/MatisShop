@@ -1,0 +1,16 @@
+.env
+*.pyc
+__pycache__/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+odoo/source/
+odoo/filestore/
+.odoo-source-revision
+gateway/.gateway-dev.db*
+*.log
+.coverage
+htmlcov/
+.DS_Store
