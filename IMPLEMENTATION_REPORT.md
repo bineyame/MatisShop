@@ -248,6 +248,8 @@ Confirmed correct (no change needed):
 | `stock.quant._get_available_quantity(product, location, …)` | positional call is correct |
 | `product.pricelist._get_product_price(product, *args)` | quantity-as-positional is correct |
 | `account.move.pos_order_ids` | exists — the double-fiscalization guard works |
+| `TestPoSCommon` helpers used by the POS test (`create_product`, `open_new_session`, `create_ui_order_data`, `basic_config`, `categ_basic`) | all exist; `create_product` is a classmethod with our exact signature |
+| `sync_from_ui` returns a dict keyed by model | confirmed — it returns `read_pos_data()`, so `results["pos.order"][0]["id"]` is correct |
 | payment hooks (`_send_payment_request`, `_get_specific_rendering_values`, `_get_tx_from_notification_data`, `_process_notification_data`, `_set_*`) | all exist |
 | `delivery.carrier` dispatch is `getattr(self, '%s_rate_shipment' % delivery_type)` | our `integration_gateway_*` naming is correct |
 | every inherited view xmlid | `view_pos_pos_form`, `view_delivery_carrier_form`, `payment_provider_form`, `payment_transaction_form`, `view_picking_form`, `view_move_form`, `report_invoice_document`, `res_config_settings_view_form` — all present |
@@ -264,12 +266,7 @@ behaviour. Remaining risk, highest first:
 1. **`pos.order` creation as a whole.** Every individual field and method is
    confirmed, but constructing a paid order outside the POS front end
    exercises constraints and computes that only run at runtime.
-2. **`sync_from_ui` payload shape** in
-   `addons/et_fiscal_odoo/tests/test_pos_fiscal_flow.py`. The method exists;
-   the exact dict Odoo 18 expects may differ from `create_ui_order_data`'s
-   output. The *production* trigger deliberately does not depend on it — it
-   hooks `action_pos_order_paid`.
-3. **Chart-of-accounts application.** The signature is right; whether
+2. **Chart-of-accounts application.** The signature is right; whether
    `generic_coa` yields a usable cash journal for POS is a runtime question.
 4. **Module install ordering and demo seeding end to end**, including the ETB
    currency switch and the warehouse rename.
