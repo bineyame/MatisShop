@@ -56,7 +56,14 @@ def test_provider_implements_its_contract(base, implementation):
 
 @pytest.mark.parametrize(
     "implementation",
-    [MoRFiscalProvider, AccreditedFiscalProvider, ArifPayProvider, ChapaProvider, TelebirrProvider, KlikProvider],
+    [
+        MoRFiscalProvider,
+        AccreditedFiscalProvider,
+        ArifPayProvider,
+        ChapaProvider,
+        TelebirrProvider,
+        KlikProvider,
+    ],
 )
 def test_real_provider_placeholders_declare_what_they_need(implementation):
     assert implementation.required_settings, "placeholder must document its settings"

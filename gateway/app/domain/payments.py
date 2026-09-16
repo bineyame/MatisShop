@@ -7,7 +7,7 @@ lost response never charges a customer twice.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -376,9 +376,4 @@ class PaymentService:
 
 
 def _now_ms() -> int:
-    from datetime import datetime, timezone
-
-    return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
-
-
-__all__ = ["PaymentService", "Decimal"]
+    return int(datetime.now(tz=UTC).timestamp() * 1000)

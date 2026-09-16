@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -126,7 +126,7 @@ def fiscal_payload(
         "document": {
             "type": "receipt",
             "number": document_number,
-            "issued_at": datetime.now(tz=timezone.utc).isoformat(),
+            "issued_at": datetime.now(tz=UTC).isoformat(),
         },
         "seller": {
             "name": "Mati's Shoes PLC",
@@ -139,7 +139,7 @@ def fiscal_payload(
             {
                 "line_id": "1",
                 "sku": "SAM-BLK-42",
-                "barcode": "2000000042012",
+                "barcode": "2000004200008",  # the real seeded EAN-13 for SAM-BLK-42
                 "description": "Adidas Samba / Black / 42",
                 "quantity": "1",
                 "unit_price": subtotal,

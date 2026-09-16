@@ -6,7 +6,7 @@ swappable, not to model logistics. Same idempotency and audit guarantees.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -279,8 +279,8 @@ class DeliveryService:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 def _now_ms() -> int:
-    return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+    return int(datetime.now(tz=UTC).timestamp() * 1000)

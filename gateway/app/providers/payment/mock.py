@@ -14,7 +14,7 @@ so replaying a request yields the same provider transaction id.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,7 +57,7 @@ class MockPaymentProvider(PaymentProvider):
             )
 
         status = "succeeded" if mode == "auto_success" else "pending"
-        authorized_at = datetime.now(tz=timezone.utc) if status == "succeeded" else None
+        authorized_at = datetime.now(tz=UTC) if status == "succeeded" else None
         await self._remember(provider_txn, status)
 
         return PaymentCreationResult(
@@ -84,7 +84,7 @@ class MockPaymentProvider(PaymentProvider):
         return PaymentStatusResult(
             provider_transaction_id=reference,
             status=status,
-            raw_response={"mock": True, "verified_at": datetime.now(tz=timezone.utc).isoformat()},
+            raw_response={"mock": True, "verified_at": datetime.now(tz=UTC).isoformat()},
         )
 
     async def refund(self, reference: str, amount: Decimal | None = None) -> RefundResult:

@@ -17,7 +17,7 @@ into it. See docs/fiscal-integration.md.
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -99,7 +99,7 @@ class MockFiscalProvider(FiscalProvider):
         if not document.seller.tin:
             raise ProviderPermanentError("seller TIN is required", provider=self.name)
 
-        registered_at = datetime.now(tz=timezone.utc)
+        registered_at = datetime.now(tz=UTC)
         row = MockFiscalRegistration(
             idempotency_key=key,
             provider_transaction_id="",
@@ -135,12 +135,12 @@ class MockFiscalProvider(FiscalProvider):
             raise ProviderPermanentError(f"unknown fiscal reference {reference}", provider=self.name)
         if row.status != "cancelled":
             row.status = "cancelled"
-            row.cancelled_at = datetime.now(tz=timezone.utc)
+            row.cancelled_at = datetime.now(tz=UTC)
             await self.session.flush()
         return FiscalCancellationResult(
             provider_transaction_id=row.provider_transaction_id,
             status="cancelled",
-            cancelled_at=row.cancelled_at or datetime.now(tz=timezone.utc),
+            cancelled_at=row.cancelled_at or datetime.now(tz=UTC),
             raw_response={"irn": row.irn, "reason": reason, "mock": True},
         )
 

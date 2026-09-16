@@ -14,7 +14,7 @@ stays retryable without ever producing a second IRN.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -444,8 +444,8 @@ class FiscalService:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 def _now_ms() -> int:
-    return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+    return int(datetime.now(tz=UTC).timestamp() * 1000)

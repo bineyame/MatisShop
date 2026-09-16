@@ -13,7 +13,7 @@ Nothing here is an Odoo table and no Odoo table is ever read.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -38,7 +38,7 @@ def new_id() -> str:
 
 
 def utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 class TimestampMixin:

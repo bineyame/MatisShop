@@ -9,7 +9,7 @@ MOCK_DELIVERY_MODE:
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,7 +82,7 @@ class MockDeliveryProvider(DeliveryProvider):
         return DeliveryStatusResult(
             provider_transaction_id=reference,
             status=current,
-            updated_at=datetime.now(tz=timezone.utc),
+            updated_at=datetime.now(tz=UTC),
             raw_response={"mock": True, "mode": self.settings.mock_delivery_mode},
         )
 
