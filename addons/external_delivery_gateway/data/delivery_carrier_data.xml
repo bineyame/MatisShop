@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <record id="product_delivery_gateway" model="product.product">
+            <field name="name">Gateway Delivery</field>
+            <field name="type">service</field>
+            <field name="categ_id" ref="delivery.product_category_deliveries"/>
+            <field name="sale_ok" eval="False"/>
+            <field name="purchase_ok" eval="False"/>
+            <field name="list_price">120.0</field>
+            <field name="invoice_policy">order</field>
+        </record>
+
+        <record id="delivery_carrier_integration_gateway" model="delivery.carrier">
+            <field name="name">Gateway Courier (demo)</field>
+            <field name="delivery_type">integration_gateway</field>
+            <field name="product_id" ref="product_delivery_gateway"/>
+            <field name="integration_level">rate_and_ship</field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <record id="payment_method_integration_gateway" model="payment.method">
+            <field name="name">Integration Gateway</field>
+            <field name="code">integration_gateway</field>
+            <field name="sequence">50</field>
+            <field name="support_refund">full_only</field>
+        </record>
+
+        <record id="payment_provider_integration_gateway" model="payment.provider">
+            <field name="name">Integration Gateway</field>
+            <field name="code">integration_gateway</field>
+            <field name="state">test</field>
+            <field name="is_published" eval="False"/>
+            <field name="allow_tokenization" eval="False"/>
+            <field name="payment_method_ids"
+                   eval="[(6, 0, [ref('payment_method_integration_gateway')])]"/>
+            <field name="pre_msg">
+                You will be redirected to the payment page.
+                DEMO PAYMENT - no real funds move.
+            </field>
+        </record>
+
+    </data>
+</odoo>

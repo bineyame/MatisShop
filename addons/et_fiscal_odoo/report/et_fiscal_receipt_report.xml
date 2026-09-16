@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Fiscal receipt.
+
+        Deliberately a server-side QWeb report rather than a patch of the POS
+        OWL receipt template. Two reasons:
+
+        1. Fiscal registration completes AFTER the sale. The receipt printed at
+           the moment of payment cannot contain an IRN that does not exist yet.
+           What a shop actually needs is a reprintable fiscal receipt, which is
+           exactly this.
+        2. A QWeb report cannot break the point of sale. A bad xpath into the
+           POS front-end templates can.
+
+        See docs/fiscal-integration.md#receipt-output.
+    -->
+
+    <record id="action_report_et_fiscal_receipt" model="ir.actions.report">
+        <field name="name">Fiscal Receipt</field>
+        <field name="model">pos.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">et_fiscal_odoo.report_et_fiscal_receipt</field>
+        <field name="report_file">et_fiscal_odoo.report_et_fiscal_receipt</field>
+        <field name="print_report_name">'Fiscal Receipt - %s' % (object.name)</field>
+        <field name="binding_model_id" ref="point_of_sale.model_pos_order"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="report_et_fiscal_receipt">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="order">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <t t-set="fiscal" t-value="order.fiscal_transaction_id"/>
+
+                        <div class="alert alert-warning text-center" role="alert">
+                            <strong>DEMO FISCAL REGISTRATION - NOT PRODUCTION CERTIFICATION</strong>
+                            <div>
+                                Produced by a mock fiscal provider for demonstration.
+                                This document has no legal validity.
+                            </div>
+                        </div>
+
+                        <h2>Fiscal Receipt</h2>
+
+                        <div class="row mt-3">
+                            <div class="col-6">
+                                <strong>Order</strong><br/>
+                                <span t-field="order.name"/><br/>
+                                <span t-field="order.date_order"/><br/>
+                                <span t-field="order.session_id.config_id.name"/>
+                            </div>
+                            <div class="col-6">
+                                <strong>Seller</strong><br/>
+                                <span t-field="order.company_id.name"/><br/>
+                                TIN: <span t-field="order.company_id.et_fiscal_tin"/>
+                            </div>
+                        </div>
+
+                        <table class="table table-sm mt-4">
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Product</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Unit Price</th>
+                                    <th class="text-end">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="order.lines" t-as="line">
+                                    <td><span t-field="line.product_id.default_code"/></td>
+                                    <td><span t-field="line.full_product_name"/></td>
+                                    <td class="text-end"><span t-field="line.qty"/></td>
+                                    <td class="text-end">
+                                        <span t-field="line.price_unit"
+                                              t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                    </td>
+                                    <td class="text-end">
+                                        <span t-field="line.price_subtotal_incl"
+                                              t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div class="row justify-content-end">
+                            <div class="col-5">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td>Subtotal</td>
+                                        <td class="text-end">
+                                            <span t-out="order.amount_total - order.amount_tax"
+                                                  t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Tax</td>
+                                        <td class="text-end">
+                                            <span t-field="order.amount_tax"
+                                                  t-options='{"widget": "monetary", "display_currency": order.currency_id}'/>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-black">
+                                        <td><strong>Total</strong></td>
+                                        <td class="text-end">
+                                            <strong><span t-field="order.amount_total"
+                                                    t-options='{"widget": "monetary", "display_currency": order.currency_id}'/></strong>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 p-3" style="border: 1px solid #000;">
+                            <h4>Fiscal Registration</h4>
+                            <t t-if="fiscal and fiscal.state == 'registered'">
+                                <div class="row">
+                                    <div class="col-8">
+                                        <table class="table table-sm table-borderless">
+                                            <tr>
+                                                <td><strong>Status</strong></td>
+                                                <td>REGISTERED</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>IRN</strong></td>
+                                                <td><span t-field="fiscal.irn"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Provider</strong></td>
+                                                <td><span t-field="fiscal.provider"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Provider Reference</strong></td>
+                                                <td><span t-field="fiscal.provider_transaction_id"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Registered At</strong></td>
+                                                <td><span t-field="fiscal.registered_at"/></td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    <div class="col-4 text-center">
+                                        <img t-if="fiscal.qr_payload"
+                                             t-att-src="'/report/barcode/?barcode_type=QR&amp;value=%s&amp;width=180&amp;height=180' % quote_plus(fiscal.qr_payload)"
+                                             alt="Fiscal QR code" style="width: 150px; height: 150px;"/>
+                                        <div style="font-size: 8px; word-break: break-all;">
+                                            <span t-field="fiscal.qr_payload"/>
+                                        </div>
+                                    </div>
+                                </div>
+                            </t>
+                            <t t-elif="fiscal">
+                                <p>
+                                    <strong>Status: <span t-field="fiscal.state"/></strong>
+                                </p>
+                                <p>
+                                    This sale is complete and the stock movement is recorded.
+                                    Fiscal registration has not completed yet and will be retried
+                                    automatically. Reprint this receipt once it is registered.
+                                </p>
+                                <p t-if="fiscal.last_error" class="text-muted">
+                                    <small>Last error: <span t-field="fiscal.last_error"/></small>
+                                </p>
+                            </t>
+                            <t t-else="">
+                                <p>No fiscal transaction exists for this order.</p>
+                            </t>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_delivery_carrier_form_gateway" model="ir.ui.view">
+        <field name="name">delivery.carrier.form.inherit.gateway</field>
+        <field name="model">delivery.carrier</field>
+        <field name="inherit_id" ref="delivery.view_delivery_carrier_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Integration Gateway" name="gateway_page"
+                      invisible="delivery_type != 'integration_gateway'">
+                    <div class="text-muted mb-3">
+                        Courier selection and courier credentials live in the Integration
+                        Gateway. Leave these empty to reuse the fiscal connector settings.
+                    </div>
+                    <group>
+                        <field name="gateway_base_url" placeholder="http://gateway:8000"/>
+                        <field name="gateway_api_key" password="True"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="payment_transaction_form_integration_gateway" model="ir.ui.view">
+        <field name="name">payment.transaction.form.inherit.integration.gateway</field>
+        <field name="model">payment.transaction</field>
+        <field name="inherit_id" ref="payment.payment_transaction_form"/>
+        <field name="arch" type="xml">
+            <!-- Appended inside the sheet rather than adding a second <header>,
+                 which some Odoo form renderers do not accept. -->
+            <xpath expr="//sheet" position="inside">
+                <group string="Integration Gateway"
+                       invisible="provider_code != 'integration_gateway'">
+                    <button name="action_gateway_poll_status" type="object"
+                            string="Poll Gateway Status" class="btn-secondary"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_et_fiscal_transaction_user,et.fiscal.transaction.user,model_et_fiscal_transaction,group_et_fiscal_user,1,1,1,0
+access_et_fiscal_transaction_manager,et.fiscal.transaction.manager,model_et_fiscal_transaction,group_et_fiscal_manager,1,1,1,1
+access_et_fiscal_transaction_pos,et.fiscal.transaction.pos,model_et_fiscal_transaction,point_of_sale.group_pos_user,1,1,1,0
+access_et_fiscal_transaction_account,et.fiscal.transaction.account,model_et_fiscal_transaction,account.group_account_invoice,1,1,1,0

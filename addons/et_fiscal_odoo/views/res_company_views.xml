@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_company_form_et_fiscal" model="ir.ui.view">
+        <field name="name">res.company.form.inherit.et.fiscal</field>
+        <field name="model">res.company</field>
+        <field name="inherit_id" ref="base.view_company_form"/>
+        <field name="arch" type="xml">
+            <field name="vat" position="after">
+                <field name="et_fiscal_tin"/>
+                <field name="et_fiscal_branch_code"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_partner_form_et_fiscal" model="ir.ui.view">
+        <field name="name">res.partner.form.inherit.et.fiscal</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <field name="vat" position="after">
+                <field name="et_fiscal_tin"/>
+            </field>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Adds the fiscal block (status, IRN, QR) to the standard customer
+        invoice PDF. Vanilla Odoo renders the invoice; this only appends the
+        fiscal result to it.
+    -->
+    <template id="report_invoice_document_et_fiscal"
+              inherit_id="account.report_invoice_document">
+        <xpath expr="//div[@class='page']" position="inside">
+            <t t-set="fiscal" t-value="o.fiscal_transaction_id"/>
+            <div t-if="fiscal" class="mt-4 p-3" style="border: 1px solid #000;">
+                <h5>Fiscal Registration</h5>
+                <div class="alert alert-warning py-1 my-2" role="alert">
+                    <small><strong>DEMO FISCAL REGISTRATION - NOT PRODUCTION CERTIFICATION</strong></small>
+                </div>
+                <t t-if="fiscal.state == 'registered'">
+                    <div class="row">
+                        <div class="col-8">
+                            <div><strong>IRN:</strong> <span t-field="fiscal.irn"/></div>
+                            <div><strong>Provider:</strong> <span t-field="fiscal.provider"/></div>
+                            <div><strong>Provider Reference:</strong>
+                                <span t-field="fiscal.provider_transaction_id"/></div>
+                            <div><strong>Registered At:</strong> <span t-field="fiscal.registered_at"/></div>
+                        </div>
+                        <div class="col-4 text-center">
+                            <img t-if="fiscal.qr_payload"
+                                 t-att-src="'/report/barcode/?barcode_type=QR&amp;value=%s&amp;width=150&amp;height=150' % quote_plus(fiscal.qr_payload)"
+                                 alt="Fiscal QR code" style="width: 120px; height: 120px;"/>
+                        </div>
+                    </div>
+                </t>
+                <t t-else="">
+                    <div>
+                        <strong>Status:</strong> <span t-field="fiscal.state"/> -
+                        fiscal registration is pending and will be retried automatically.
+                    </div>
+                </t>
+            </div>
+        </xpath>
+    </template>
+</odoo>

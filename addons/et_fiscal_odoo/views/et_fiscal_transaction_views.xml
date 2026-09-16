@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_et_fiscal_transaction_list" model="ir.ui.view">
+        <field name="name">et.fiscal.transaction.list</field>
+        <field name="model">et.fiscal.transaction</field>
+        <field name="arch" type="xml">
+            <list string="Fiscal Transactions"
+                  decoration-success="state == 'registered'"
+                  decoration-danger="state == 'failed'"
+                  decoration-muted="state == 'cancelled'"
+                  decoration-warning="state in ('pending', 'submitting')">
+                <field name="name"/>
+                <field name="create_date" string="Created"/>
+                <field name="source_reference" string="Source Document"/>
+                <field name="document_type"/>
+                <field name="amount_total"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="irn"/>
+                <field name="provider"/>
+                <field name="attempt_count" string="Attempts"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'registered'"
+                       decoration-danger="state == 'failed'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_et_fiscal_transaction_form" model="ir.ui.view">
+        <field name="name">et.fiscal.transaction.form</field>
+        <field name="model">et.fiscal.transaction</field>
+        <field name="arch" type="xml">
+            <form string="Fiscal Transaction">
+                <header>
+                    <button name="action_submit" type="object" string="Submit"
+                            class="btn-primary"
+                            invisible="state not in ('draft', 'pending')"/>
+                    <button name="action_retry" type="object" string="Retry"
+                            class="btn-primary"
+                            invisible="state != 'failed'"/>
+                    <button name="action_refresh_from_gateway" type="object"
+                            string="Refresh from Gateway"
+                            invisible="state in ('draft', 'cancelled')"/>
+                    <button name="action_cancel" type="object" string="Cancel Registration"
+                            confirm="Cancel this fiscal registration at the provider?"
+                            groups="et_fiscal_odoo.group_et_fiscal_manager"
+                            invisible="state != 'registered'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="pending,submitting,registered"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_source" type="object" class="oe_stat_button"
+                                icon="fa-file-text-o">
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Source</span>
+                                <span class="o_stat_text">Document</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+
+                    <div class="alert alert-warning" role="alert"
+                         invisible="state != 'registered'">
+                        <strong>DEMO FISCAL REGISTRATION - NOT PRODUCTION CERTIFICATION.</strong>
+                        This registration was produced by a mock provider and has no legal validity.
+                    </div>
+
+                    <div class="alert alert-danger" role="alert" invisible="state != 'failed'">
+                        <strong>Registration failed.</strong>
+                        The sale itself is unaffected and the stock movement is correct.
+                        This document stays retryable under its original identity, so retrying
+                        can never create a second registration.
+                        <field name="last_error" readonly="1" nolabel="1"/>
+                    </div>
+
+                    <group>
+                        <group string="Source">
+                            <field name="source_reference" readonly="1"/>
+                            <field name="source_model" readonly="1"/>
+                            <field name="source_record_id" readonly="1"/>
+                            <field name="document_type" readonly="1"/>
+                            <field name="company_id" readonly="1" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Amounts">
+                            <field name="currency_id" readonly="1"/>
+                            <field name="amount_untaxed" readonly="1"/>
+                            <field name="amount_tax" readonly="1"/>
+                            <field name="amount_total" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <group>
+                        <group string="Fiscal Result">
+                            <field name="irn" readonly="1"/>
+                            <field name="provider" readonly="1"/>
+                            <field name="provider_transaction_id" readonly="1"/>
+                            <field name="registered_at" readonly="1"/>
+                        </group>
+                        <group string="Integration">
+                            <field name="idempotency_key" readonly="1"/>
+                            <field name="gateway_document_id" readonly="1"/>
+                            <field name="correlation_id" readonly="1"/>
+                            <field name="attempt_count" readonly="1"/>
+                            <field name="submitted_at" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="QR Code" invisible="not qr_payload">
+                            <!-- Rendered by Odoo's own barcode controller; no
+                                 extra QR dependency is pulled in. -->
+                            <field name="qr_image_url" widget="image_url" nolabel="1"
+                                   options="{'size': [200, 200]}" readonly="1"/>
+                            <separator string="QR Payload"/>
+                            <field name="qr_payload" readonly="1"/>
+                        </page>
+                        <page string="Request Sent">
+                            <field name="request_payload" readonly="1" widget="text"/>
+                        </page>
+                        <page string="Last Response">
+                            <field name="last_response" readonly="1" widget="text"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_et_fiscal_transaction_search" model="ir.ui.view">
+        <field name="name">et.fiscal.transaction.search</field>
+        <field name="model">et.fiscal.transaction</field>
+        <field name="arch" type="xml">
+            <search string="Fiscal Transactions">
+                <field name="name"/>
+                <field name="irn"/>
+                <field name="source_reference"/>
+                <field name="idempotency_key"/>
+                <field name="provider_transaction_id"/>
+                <separator/>
+                <filter name="filter_registered" string="Registered"
+                        domain="[('state', '=', 'registered')]"/>
+                <filter name="filter_failed" string="Failed"
+                        domain="[('state', '=', 'failed')]"/>
+                <filter name="filter_waiting" string="Waiting"
+                        domain="[('state', 'in', ('draft', 'pending', 'submitting'))]"/>
+                <separator/>
+                <filter name="filter_today" string="Today"
+                        domain="[('create_date', '&gt;=', datetime.datetime.combine(context_today(), datetime.time(0,0,0)))]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                    <filter name="group_type" string="Document Type" context="{'group_by': 'document_type'}"/>
+                    <filter name="group_provider" string="Provider" context="{'group_by': 'provider'}"/>
+                    <filter name="group_date" string="Created" context="{'group_by': 'create_date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_et_fiscal_transaction" model="ir.actions.act_window">
+        <field name="name">Fiscal Transactions</field>
+        <field name="res_model">et.fiscal.transaction</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_et_fiscal_transaction_search"/>
+        <field name="context">{'search_default_group_state': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No fiscal transaction yet</p>
+            <p>
+                Fiscal transactions are created automatically when a POS order is paid
+                or a customer invoice is posted.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_et_fiscal_transaction_failed" model="ir.actions.act_window">
+        <field name="name">Failed Fiscal Transactions</field>
+        <field name="res_model">et.fiscal.transaction</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('state', '=', 'failed')]</field>
+    </record>
+
+</odoo>

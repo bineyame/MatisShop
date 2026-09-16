@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!--
+            Offline recovery. The shop keeps selling while the gateway or the
+            provider is unreachable; this job drains the backlog afterwards.
+            Every document carries its original idempotency key, so draining
+            the backlog can never double-register anything.
+        -->
+        <record id="cron_et_fiscal_submit_pending" model="ir.cron">
+            <field name="name">Fiscal: submit pending and failed documents</field>
+            <field name="model_id" ref="model_et_fiscal_transaction"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_submit_pending()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

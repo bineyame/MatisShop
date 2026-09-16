@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_pos_order_form_et_fiscal" model="ir.ui.view">
+        <field name="name">pos.order.form.inherit.et.fiscal</field>
+        <field name="model">pos.order</field>
+        <field name="inherit_id" ref="point_of_sale.view_pos_pos_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Fiscalization" name="et_fiscal_group">
+                    <group>
+                        <field name="fiscal_state"/>
+                        <field name="fiscal_irn"/>
+                        <field name="fiscal_transaction_id" readonly="1"/>
+                    </group>
+                    <group>
+                        <button name="action_fiscalize" type="object"
+                                string="Fiscalize Now" class="btn-secondary"
+                                invisible="fiscal_state == 'registered'"/>
+                        <button name="action_view_fiscal_transaction" type="object"
+                                string="Open Fiscal Transaction" class="btn-link"
+                                invisible="not fiscal_transaction_id"/>
+                        <button name="action_fiscal_reprint" type="object"
+                                string="Print Fiscal Receipt" class="btn-link"
+                                invisible="fiscal_state != 'registered'"/>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

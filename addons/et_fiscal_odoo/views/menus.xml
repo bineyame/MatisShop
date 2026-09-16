@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_et_fiscal_root"
+              name="Fiscalization"
+              sequence="90"
+              groups="et_fiscal_odoo.group_et_fiscal_user"/>
+
+    <menuitem id="menu_et_fiscal_transactions"
+              name="Fiscal Transactions"
+              parent="menu_et_fiscal_root"
+              action="action_et_fiscal_transaction"
+              sequence="10"/>
+
+    <menuitem id="menu_et_fiscal_failed"
+              name="Needs Attention"
+              parent="menu_et_fiscal_root"
+              action="action_et_fiscal_transaction_failed"
+              sequence="20"/>
+
+    <menuitem id="menu_et_fiscal_config"
+              name="Configuration"
+              parent="menu_et_fiscal_root"
+              sequence="90"
+              groups="et_fiscal_odoo.group_et_fiscal_manager"/>
+
+    <menuitem id="menu_et_fiscal_settings"
+              name="Settings"
+              parent="menu_et_fiscal_config"
+              action="base_setup.action_general_configuration"
+              sequence="10"/>
+</odoo>

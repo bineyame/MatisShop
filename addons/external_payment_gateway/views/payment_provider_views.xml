@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="payment_provider_form_integration_gateway" model="ir.ui.view">
+        <field name="name">payment.provider.form.inherit.integration.gateway</field>
+        <field name="model">payment.provider</field>
+        <field name="inherit_id" ref="payment.payment_provider_form"/>
+        <field name="arch" type="xml">
+            <group name="provider_credentials" position="inside">
+                <group invisible="code != 'integration_gateway'">
+                    <div class="text-muted" colspan="2">
+                        Payment rail selection and rail credentials live in the Integration
+                        Gateway, not here. Odoo only needs to reach the gateway.
+                        Leave these empty to reuse the fiscal connector settings.
+                    </div>
+                    <field name="gateway_base_url" placeholder="http://gateway:8000"/>
+                    <field name="gateway_api_key" password="True"/>
+                    <button name="action_test_gateway_connection" type="object"
+                            string="Test Gateway Connection" class="btn-secondary"/>
+                </group>
+            </group>
+        </field>
+    </record>
+</odoo>

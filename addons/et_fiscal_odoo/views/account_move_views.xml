@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_move_form_et_fiscal" model="ir.ui.view">
+        <field name="name">account.move.form.inherit.et.fiscal</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <!-- Appended to the notebook rather than anchored to a named page:
+                 page ids move between Odoo versions, //notebook does not. -->
+            <xpath expr="//notebook" position="inside">
+                <page string="Fiscalization" name="et_fiscal_page"
+                      invisible="move_type not in ('out_invoice', 'out_refund')">
+                    <group>
+                        <group>
+                            <field name="fiscal_state"/>
+                            <field name="fiscal_irn"/>
+                            <field name="fiscal_transaction_id" readonly="1"/>
+                        </group>
+                        <group>
+                            <button name="action_fiscalize" type="object"
+                                    string="Fiscalize Now" class="btn-secondary"
+                                    invisible="state != 'posted' or fiscal_state == 'registered'"/>
+                            <button name="action_view_fiscal_transaction" type="object"
+                                    string="Open Fiscal Transaction" class="btn-link"
+                                    invisible="not fiscal_transaction_id"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>
