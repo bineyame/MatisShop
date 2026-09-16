@@ -1,0 +1,26 @@
+{
+  "_comment": "Exactly what external_payment_gateway sends for a website/sale payment.",
+  "idempotency_key": "odoo-payment-S00023-1",
+  "reference": "S00023-1",
+  "source": {
+    "system": "odoo",
+    "model": "payment.transaction",
+    "record_id": "7",
+    "reference": "S00023-1"
+  },
+  "amount": "6200.00",
+  "currency": "ETB",
+  "customer": {
+    "name": "Abebe Kebede",
+    "phone": "+251911223344",
+    "email": "abebe@example.com",
+    "address": "Bole, Addis Ababa, Ethiopia"
+  },
+  "description": "S00023-1",
+  "return_url": "http://localhost:8069/payment/status",
+  "cancel_url": "http://localhost:8069/payment/status",
+  "metadata": {
+    "odoo_transaction_id": 7,
+    "company": "Mati's Shoes PLC"
+  }
+}

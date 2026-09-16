@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_mati_demo_setup_user,mati.demo.setup.user,model_mati_demo_setup,base.group_user,1,0,0,0
+access_mati_demo_setup_manager,mati.demo.setup.manager,model_mati_demo_setup,base.group_system,1,1,1,1

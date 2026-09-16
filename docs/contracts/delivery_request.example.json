@@ -1,0 +1,36 @@
+{
+  "_comment": "Exactly what external_delivery_gateway sends when a delivery order is confirmed.",
+  "idempotency_key": "odoo-delivery-WH/OUT/00012",
+  "reference": "WH/OUT/00012",
+  "source": {
+    "system": "odoo",
+    "model": "stock.picking",
+    "record_id": "12",
+    "reference": "WH/OUT/00012"
+  },
+  "pickup": {
+    "name": "Mati Main Warehouse",
+    "phone": "+251 11 000 0000",
+    "street": "Bole Road",
+    "city": "Addis Ababa",
+    "country_code": "ET"
+  },
+  "dropoff": {
+    "name": "Abebe Kebede",
+    "phone": "+251911223344",
+    "street": "Kazanchis",
+    "city": "Addis Ababa",
+    "country_code": "ET"
+  },
+  "packages": [
+    {
+      "description": "Adidas Samba (Black, 42)",
+      "quantity": "1.0",
+      "sku": "SAM-BLK-42",
+      "weight_kg": "0.9"
+    }
+  ],
+  "cash_on_delivery": "0.00",
+  "currency": "ETB",
+  "notes": null
+}

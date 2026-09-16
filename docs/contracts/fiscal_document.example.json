@@ -1,0 +1,57 @@
+{
+  "_comment": "Exactly what et_fiscal_odoo sends for a POS receipt. Kept in sync by tests/contract/test_fiscal_contract.py and addons/et_fiscal_odoo/tests/test_pos_fiscal_flow.py.",
+  "idempotency_key": "6f1c2d4e8a9b4c3d8e7f0a1b2c3d4e5f",
+  "source": {
+    "system": "odoo",
+    "model": "pos.order",
+    "record_id": "42",
+    "reference": "Shop 1 Retail/0001"
+  },
+  "document": {
+    "type": "receipt",
+    "number": "Shop 1 Retail/0001",
+    "issued_at": "2026-03-14T09:31:22+00:00",
+    "notes": null
+  },
+  "seller": {
+    "name": "Mati's Shoes PLC",
+    "tin": "0012345678",
+    "vat": null,
+    "address": "Bole Road, Addis Ababa, Ethiopia",
+    "phone": "+251 11 000 0000",
+    "email": "info@matishoes.example"
+  },
+  "buyer": {
+    "name": "Walk-in Customer"
+  },
+  "lines": [
+    {
+      "line_id": "1",
+      "sku": "SAM-BLK-42",
+      "barcode": "2000004200008",
+      "description": "Adidas Samba (Black, 42)",
+      "quantity": "1.0",
+      "unit_price": "6000.00",
+      "discount": "0.00",
+      "tax_code": "VAT 15%",
+      "tax_rate": "15.0",
+      "tax_amount": "900.00",
+      "line_total": "6000.00"
+    }
+  ],
+  "taxes": [
+    {
+      "code": "VAT15",
+      "name": "VAT 15%",
+      "rate": "15.0",
+      "base": "6000.00",
+      "amount": "900.00"
+    }
+  ],
+  "totals": {
+    "currency": "ETB",
+    "subtotal": "6000.00",
+    "tax_total": "900.00",
+    "grand_total": "6900.00"
+  }
+}

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        A small control panel for presenting the demo: reseed, reset to the
+        opening state, and flip the mock fiscal provider between working and
+        failing without leaving Odoo.
+    -->
+    <record id="view_mati_demo_setup_form" model="ir.ui.view">
+        <field name="name">mati.demo.setup.form</field>
+        <field name="model">mati.demo.setup</field>
+        <field name="arch" type="xml">
+            <form string="Mati Demo">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>Mati's Shoes - Demo Controls</h1>
+                    </div>
+
+                    <div class="alert alert-info" role="alert">
+                        Everything the demo shows about products, stock, purchasing, transfers,
+                        pricing and the point of sale is <strong>vanilla Odoo, configured</strong>.
+                        Only fiscalization, external payment and external delivery are custom,
+                        and those are adapters onto the Integration Gateway.
+                    </div>
+
+                    <div class="alert alert-warning" role="alert">
+                        <strong>DEMO FISCAL REGISTRATION - NOT PRODUCTION CERTIFICATION.</strong>
+                        Fiscal registration goes to a mock provider and has no legal validity.
+                    </div>
+
+                    <group string="Demo Controls">
+                        <button name="action_seed" type="object" class="btn-primary"
+                                string="Re-seed Demo Data"
+                                help="Idempotent: running it again changes nothing."/>
+                        <button name="action_reset_demo" type="object" class="btn-secondary"
+                                string="Reset to Opening State"
+                                confirm="Cancel open purchase orders and transfers, then restore the seeded opening stock?"/>
+                        <button name="action_toggle_fiscal_failure" type="object"
+                                class="btn-warning"
+                                string="Toggle Mock Fiscal Failure Mode"
+                                help="Force the mock fiscal provider to fail so failure and retry can be demonstrated."/>
+                    </group>
+
+                    <group string="Seeded Opening Stock">
+                        <div colspan="2">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>SKU</th><th>Main WH</th><th>Shop 1</th><th>Shop 2</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>SAM-BLK-41</td><td>20</td><td>5</td><td>8</td></tr>
+                                    <tr><td>SAM-BLK-42</td><td>10</td><td>3</td><td>6</td></tr>
+                                    <tr><td>SAM-WHT-41</td><td>18</td><td>7</td><td>4</td></tr>
+                                    <tr><td>SAM-WHT-42</td><td>12</td><td>2</td><td>9</td></tr>
+                                </tbody>
+                            </table>
+                            <p class="text-muted">
+                                SAM-BLK-42 opens at 10 in the main warehouse on purpose:
+                                the purchase demo receives 20 more and the expected result
+                                is exactly 30.
+                            </p>
+                        </div>
+                    </group>
+
+                    <group string="Seeded Pricing (Adidas Samba)">
+                        <div colspan="2">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr><th>Context</th><th>Price (ETB)</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>Retail</td><td>6,000</td></tr>
+                                    <tr><td>Online</td><td>6,200</td></tr>
+                                    <tr><td>Wholesale</td><td>5,300</td></tr>
+                                    <tr><td>Wholesale, 20+ units</td><td>5,000</td></tr>
+                                </tbody>
+                            </table>
+                            <p class="text-muted">
+                                One product, one variant, one stock identity. Four prices,
+                                through native pricelists. No duplicated products.
+                            </p>
+                        </div>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_mati_demo_setup" model="ir.actions.act_window">
+        <field name="name">Demo Controls</field>
+        <field name="res_model">mati.demo.setup</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_mati_demo_setup_form"/>
+        <field name="target">current</field>
+    </record>
+
+    <menuitem id="menu_mati_demo_root" name="Mati Demo" sequence="5"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_mati_demo_controls" name="Demo Controls"
+              parent="menu_mati_demo_root"
+              action="action_mati_demo_setup" sequence="10"/>
+
+    <menuitem id="menu_mati_demo_fiscal" name="Fiscal Transactions"
+              parent="menu_mati_demo_root"
+              action="et_fiscal_odoo.action_et_fiscal_transaction" sequence="20"/>
+
+</odoo>
