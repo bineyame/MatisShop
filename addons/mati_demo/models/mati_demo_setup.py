@@ -133,6 +133,7 @@ class MatiDemoSetup(models.TransientModel):
     def seed_all(self):
         """Seed everything. Idempotent: safe to run repeatedly."""
         _logger.info("=== Mati demo seeding: start ===")
+        self._seed_feature_groups()
         company = self._seed_company()
         self._seed_accounting(company)
         self._seed_partners(company)
@@ -147,6 +148,40 @@ class MatiDemoSetup(models.TransientModel):
         self._seed_pos_configs(company, warehouses, pricelists)
         self._seed_website(pricelists, templates)
         _logger.info("=== Mati demo seeding: done ===")
+        return True
+
+    # ==================================================================
+    # Odoo feature switches
+    # ==================================================================
+    @api.model
+    def _seed_feature_groups(self):
+        """Turn on the Odoo features this demo depends on.
+
+        These are the same switches as the checkboxes in Settings. Without
+        them Odoo hides variants and pricelists in the UI and refuses a second
+        warehouse - which would make the demo impossible to show even though
+        the data underneath is correct.
+        """
+        wanted = [
+            "product.group_product_variant",       # Variants
+            "product.group_product_pricelist",     # Pricelists
+            "stock.group_stock_multi_locations",   # Storage locations
+            "stock.group_stock_multi_warehouses",  # Multiple warehouses
+        ]
+        base_user = self.env.ref("base.group_user", raise_if_not_found=False)
+        if not base_user:  # pragma: no cover - defensive
+            return False
+
+        enabled = []
+        for xmlid in wanted:
+            group = self.env.ref(xmlid, raise_if_not_found=False)
+            if not group:
+                _logger.warning("feature group %s not found; skipping", xmlid)
+                continue
+            if group not in base_user.implied_ids:
+                base_user.write({"implied_ids": [(4, group.id)]})
+                enabled.append(xmlid)
+        _logger.info("feature groups enabled: %s", enabled or "already on")
         return True
 
     # ==================================================================
@@ -478,9 +513,11 @@ class MatiDemoSetup(models.TransientModel):
                 "name": spec["name"],
                 "currency_id": currency.id,
                 "company_id": company.id,
-                "selectable": True,
                 "sequence": {"retail": 10, "online": 20, "wholesale": 30}[key],
             }
+            # `selectable` is contributed by website_sale; only set it if present.
+            if "selectable" in Pricelist._fields:
+                values["selectable"] = True
             if pricelist:
                 pricelist.write(values)
             else:
@@ -632,7 +669,6 @@ class MatiDemoSetup(models.TransientModel):
                 "use_pricelist": True,
                 "pricelist_id": pricelist.id,
                 "available_pricelist_ids": [(6, 0, [pricelist.id])],
-                "limited_products_loading": False,
             }
             if payment_methods:
                 values["payment_method_ids"] = [(6, 0, payment_methods.ids)]

@@ -39,6 +39,7 @@ docs/architecture.md and docs/fiscal-integration.md.
     "license": "LGPL-3",
     "depends": [
         "base",
+        "base_setup",
         "mail",
         "account",
         "point_of_sale",

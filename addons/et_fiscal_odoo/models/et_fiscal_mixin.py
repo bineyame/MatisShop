@@ -17,7 +17,10 @@ class EtFiscalDocumentMixin(models.AbstractModel):
     _name = "et.fiscal.document.mixin"
     _description = "Fiscalizable Document Mixin"
 
-    fiscal_transaction_ids = fields.One2many(
+    # Many2many rather than One2many: there is no inverse field on
+    # et.fiscal.transaction (it stores model+id, not a typed relation), and a
+    # computed One2many without an inverse name is not portable.
+    fiscal_transaction_ids = fields.Many2many(
         "et.fiscal.transaction",
         compute="_compute_fiscal_transaction_ids",
         string="Fiscal Transactions",

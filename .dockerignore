@@ -1,5 +1,10 @@
 .git
 .venv
 odoo/source
+odoo/filestore
 **/__pycache__
 **/.pytest_cache
+**/.ruff_cache
+**/*.pyc
+.env
+gateway/.gateway-dev.db*

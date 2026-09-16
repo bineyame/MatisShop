@@ -73,7 +73,9 @@ services:
 
   gateway:
     build:
-      context: ./gateway
+      # Repo root, so the image also contains the cross-boundary contract tests.
+      context: .
+      dockerfile: gateway/Dockerfile
     container_name: mati-gateway
     depends_on:
       postgres:
