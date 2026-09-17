@@ -360,13 +360,36 @@ def step_pricing():
 # ===========================================================================
 # Step 8 - POS sale
 # ===========================================================================
+def pos_user_env():
+    """An environment bound to a real user, not the superuser.
+
+    ``pos.config.open_ui()`` refuses SUPERUSER_ID outright:
+
+        if self.env.uid == SUPERUSER_ID and not tools.config['test_enable']:
+            raise UserError("You do not have permission to open a POS session")
+
+    That is correct behaviour - a session belongs to a cashier, not to
+    OdooBot - and `odoo shell` runs as uid 1, so the POS steps act as `admin`.
+    """
+    admin = env.ref("base.user_admin", raise_if_not_found=False)
+    if not admin:
+        admin = env["res.users"].search([("login", "=", "admin")], limit=1)
+    if not admin:
+        return env
+    group = env.ref("point_of_sale.group_pos_manager", raise_if_not_found=False)
+    if group and group not in admin.groups_id:
+        admin.sudo().write({"groups_id": [(4, group.id)]})
+    return env(user=admin.id)
+
+
 def step_pos_sale(expect_fiscal_failure=False):
     section("STEP 8  POS sale at Shop 1 and stock decrement")
     variant = CONTEXT.get("variant")
     if not variant:
         return None
 
-    config = env["pos.config"].search([("name", "=", "Shop 1 Retail POS")], limit=1)
+    penv = pos_user_env()
+    config = penv["pos.config"].search([("name", "=", "Shop 1 Retail POS")], limit=1)
     check(8, "Shop 1 Retail POS is configured", bool(config))
     if not config:
         return None
@@ -391,13 +414,19 @@ def step_pos_sale(expect_fiscal_failure=False):
     )
     check(8, "scanning the barcode resolves to the right variant", scanned == variant, scanned.display_name)
 
-    session = env["pos.session"].search(
+    session = penv["pos.session"].search(
         [("config_id", "=", config.id), ("state", "in", ("opening_control", "opened"))], limit=1
     )
     if not session:
-        session = env["pos.session"].create({"config_id": config.id, "user_id": env.uid})
+        # open_ui() is how the point of sale itself starts a session.
+        config.open_ui()
+        session = config.current_session_id
     if session.state == "opening_control":
-        session.action_pos_session_open()
+        # set_opening_control() is the public API that actually opens the
+        # session; it is what Odoo's own POS tests use. A session left in
+        # 'opening_control' still accepts orders, which is why the sale below
+        # succeeded even when this step was failing.
+        session.set_opening_control(0, None)
     check(8, "a POS session is open", session.state == "opened", session.state)
 
     shop1_before = qty_at(variant, "SHOP1")
@@ -409,7 +438,7 @@ def step_pos_sale(expect_fiscal_failure=False):
     subtotal = tax_result["total_excluded"]
     total = tax_result["total_included"]
 
-    order = env["pos.order"].create(
+    order = penv["pos.order"].create(
         {
             "company_id": env.company.id,
             "session_id": session.id,
@@ -439,7 +468,7 @@ def step_pos_sale(expect_fiscal_failure=False):
     payment_method = config.payment_method_ids[:1]
     check(8, "the POS has a payment method", bool(payment_method))
     if payment_method:
-        env["pos.payment"].create(
+        penv["pos.payment"].create(
             {
                 "pos_order_id": order.id,
                 "payment_method_id": payment_method.id,
@@ -688,6 +717,9 @@ def step_reconciliation():
         location = warehouse.lot_stock_id
         on_hand = env["stock.quant"]._get_available_quantity(variant, location)
 
+        # Note: no "not child_of" clause - Odoo has no such operator. It is not
+        # needed either: a move entirely inside this location appears in both
+        # sums and cancels out, which is exactly right.
         incoming = sum(
             env["stock.move"]
             .search(
@@ -695,7 +727,6 @@ def step_reconciliation():
                     ("product_id", "=", variant.id),
                     ("state", "=", "done"),
                     ("location_dest_id", "child_of", location.id),
-                    ("location_id", "not child_of", location.id),
                 ]
             )
             .mapped("quantity")
@@ -707,7 +738,6 @@ def step_reconciliation():
                     ("product_id", "=", variant.id),
                     ("state", "=", "done"),
                     ("location_id", "child_of", location.id),
-                    ("location_dest_id", "not child_of", location.id),
                 ]
             )
             .mapped("quantity")
