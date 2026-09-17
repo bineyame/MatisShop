@@ -89,6 +89,17 @@ class TestDemoSeed(TransactionCase):
         self.assertTrue({"MAIN", "SHOP1", "SHOP2"}.issubset(codes), codes)
 
     def test_opening_stock_differs_by_location(self):
+        # Re-apply the opening stock first: this database may have had a full
+        # demo run against it, and the assertion is about what the seed
+        # produces, not about whether anybody has sold anything since.
+        warehouses = {
+            warehouse.code: warehouse
+            for warehouse in self.env["stock.warehouse"].search(
+                [("company_id", "=", self.env.company.id)]
+            )
+        }
+        self.env["mati.demo.setup"]._seed_opening_stock(self.env.company, warehouses)
+
         variant = self.env["product.product"].search([("default_code", "=", "SAM-BLK-42")], limit=1)
         quantities = {}
         for code in ("MAIN", "SHOP1", "SHOP2"):

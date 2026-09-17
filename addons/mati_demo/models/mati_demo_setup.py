@@ -706,7 +706,21 @@ class MatiDemoSetup(models.TransientModel):
                 values["payment_method_ids"] = [(6, 0, payment_methods.ids)]
 
             if config:
-                config.write(values)
+                # Odoo refuses to change several pos.config fields while a
+                # session is open, and rightly so - the till is mid-shift.
+                # Re-seeding is documented as safe to re-run, so write only
+                # what actually differs and never fail on a live till.
+                changed = self._changed_values(config, values)
+                if changed:
+                    try:
+                        config.write(changed)
+                    except UserError as exc:
+                        _logger.warning(
+                            "POS %s not updated (%s): %s",
+                            name,
+                            ", ".join(sorted(changed)),
+                            exc,
+                        )
             else:
                 config = Config.create(values)
             _logger.info(
@@ -716,6 +730,32 @@ class MatiDemoSetup(models.TransientModel):
                 pricelist.name,
             )
         return True
+
+    @api.model
+    def _changed_values(self, record, values):
+        """Subset of ``values`` that actually differs from ``record``.
+
+        Idempotent seeding means a second run writes nothing at all - not
+        merely that it produces the same end state. Several models (pos.config
+        being the strict one) reject writes that would otherwise be harmless
+        no-ops.
+        """
+        changed = {}
+        for key, value in values.items():
+            field = record._fields.get(key)
+            if field is None:
+                continue
+            if field.type in ("many2many", "one2many"):
+                # Only the (6, 0, ids) "set" command is used by this seeder.
+                if value and value[0][0] == 6 and set(record[key].ids) == set(value[0][2]):
+                    continue
+            elif field.type == "many2one":
+                if record[key].id == value:
+                    continue
+            elif record[key] == value:
+                continue
+            changed[key] = value
+        return changed
 
     @api.model
     def _ensure_pos_payment_method(self, company, shop_code):

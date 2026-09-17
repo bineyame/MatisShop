@@ -10,6 +10,7 @@ Run with:
         --test-tags /et_fiscal_odoo --stop-after-init
 """
 
+import itertools
 import json
 from unittest.mock import patch
 
@@ -58,10 +59,15 @@ class TestFiscalTransaction(TestPoSCommon):
         # Auto-submit off: these tests drive submission explicitly.
         cls.env["ir.config_parameter"].sudo().set_param("et_fiscal.auto_submit", "0")
 
+    # Real POS orders exist in a demo database and already own fiscal
+    # transactions. A fixed source_record_id collides with them
+    # (et_fiscal_transaction_source_unique), so every test gets its own.
+    _source_ids = itertools.count(900001)
+
     def _make_transaction(self, **overrides):
         values = {
             "source_model": "pos.order",
-            "source_record_id": 1,
+            "source_record_id": next(self._source_ids),
             "source_reference": "Shop 1 Retail/0001",
             "document_type": "receipt",
             "company_id": self.env.company.id,
@@ -91,7 +97,7 @@ class TestFiscalTransaction(TestPoSCommon):
         first = self._make_transaction()
         with self.assertRaises(Exception):
             self._make_transaction(
-                source_record_id=2, idempotency_key=first.idempotency_key
+                idempotency_key=first.idempotency_key
             ).flush_recordset()
 
     def test_sequence_is_assigned(self):
@@ -243,8 +249,8 @@ class TestFiscalTransaction(TestPoSCommon):
         self.env["ir.config_parameter"].sudo().set_param("et_fiscal.enabled", "1")
 
     def test_cron_only_picks_up_retryable_documents(self):
-        pending = self._make_transaction(state="pending", source_record_id=101)
-        registered = self._make_transaction(state="pending", source_record_id=102)
+        pending = self._make_transaction(state="pending")
+        registered = self._make_transaction(state="pending")
         registered._set_state("submitting")
         registered._apply_gateway_response(
             dict(REGISTERED_RESPONSE, idempotency_key=registered.idempotency_key)

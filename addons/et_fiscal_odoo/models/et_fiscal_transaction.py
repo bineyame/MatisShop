@@ -25,7 +25,7 @@ import json
 import logging
 import uuid
 
-from odoo import _, api, fields, models
+from odoo import _, api, fields, models, modules, tools
 from odoo.exceptions import UserError, ValidationError
 
 from .fiscal_gateway_client import GatewayError
@@ -477,15 +477,22 @@ class EtFiscalTransaction(models.Model):
         )
         _logger.info("fiscal cron: %s transaction(s) to submit", len(transactions))
 
+        # Committing per document keeps one poisoned document from blocking the
+        # rest of the backlog. Inside a test that is forbidden: Odoo patches
+        # commit/rollback to raise "Cannot commit or rollback a cursor from
+        # inside a test". This is the guard Odoo core uses for the same
+        # situation (see account/models/account_move.py).
+        can_commit = not tools.config["test_enable"] and not modules.module.current_test
+
         submitted = 0
         for transaction in transactions:
             try:
                 transaction._submit()
-                # Commit per document: one poisoned document must not block
-                # the rest of the backlog.
-                self.env.cr.commit()
+                if can_commit:
+                    self.env.cr.commit()
                 submitted += 1
             except Exception:  # noqa: BLE001 - a cron must never die on one record
-                self.env.cr.rollback()
+                if can_commit:
+                    self.env.cr.rollback()
                 _logger.exception("fiscal cron: failed to submit %s", transaction.name)
         return submitted
