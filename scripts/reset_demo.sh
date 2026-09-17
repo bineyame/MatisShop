@@ -12,7 +12,11 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 ODOO_DB="${ODOO_DB_NAME:-odoo}"
 
 echo "==> Resetting demo state in '${ODOO_DB}'"
-$COMPOSE exec -T odoo odoo shell -d "${ODOO_DB}" --no-http --log-level=warn <<'PYEOF'
+# NB: `docker compose exec` bypasses the image ENTRYPOINT, so we invoke it
+# explicitly. Without it Odoo gets no --db_host/--db_user and tries a local
+# unix socket. (PYTHONPATH in the image means the pinned source is used
+# either way, so this is about connection parameters, not which Odoo runs.)
+$COMPOSE exec -T odoo mati-entrypoint.sh odoo shell -d "${ODOO_DB}" --no-http --log-level=warn <<'PYEOF'
 # Close any open POS session so the next demo starts clean.
 for session in env["pos.session"].search([("state", "!=", "closed")]):
     try:

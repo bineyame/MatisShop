@@ -83,7 +83,7 @@ test-odoo: ## Run the Odoo addon tests
 		--log-level=test
 
 shell-odoo: ## Open an Odoo shell
-	$(COMPOSE) exec odoo odoo shell -d $(ODOO_DB) --no-http
+	$(COMPOSE) exec odoo mati-entrypoint.sh odoo shell -d $(ODOO_DB) --no-http
 
 shell-gateway: ## Open a shell in the gateway container
 	$(COMPOSE) exec gateway /bin/sh

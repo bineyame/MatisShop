@@ -7,7 +7,9 @@
     -->
     <template id="report_invoice_document_et_fiscal"
               inherit_id="account.report_invoice_document">
-        <xpath expr="//div[@class='page']" position="inside">
+        <!-- hasclass(), not @class='page': the real div is class="page mb-4",
+             so an exact string match cannot locate it. -->
+        <xpath expr="//div[hasclass('page')]" position="inside">
             <t t-set="fiscal" t-value="o.fiscal_transaction_id"/>
             <div t-if="fiscal" class="mt-4 p-3" style="border: 1px solid #000;">
                 <h5>Fiscal Registration</h5>

@@ -123,7 +123,7 @@ switch ($Target.ToLower()) {
     "test" { & $PSCommandPath "test-gateway"; & $PSCommandPath "test-odoo" }
     "shell-odoo" {
         $db = Get-EnvValue -Key "ODOO_DB_NAME" -Default "odoo"
-        Invoke-Compose @("exec", "odoo", "odoo", "shell", "-d", $db, "--no-http")
+        Invoke-Compose @("exec", "odoo", "mati-entrypoint.sh", "odoo", "shell", "-d", $db, "--no-http")
     }
     "shell-gateway" { Invoke-Compose @("exec", "gateway", "/bin/sh") }
     "fiscal-fail" { Set-FiscalFailureMode -Enabled $true }

@@ -6,6 +6,9 @@
             provider is unreachable; this job drains the backlog afterwards.
             Every document carries its original idempotency key, so draining
             the backlog can never double-register anything.
+
+            Note: no `numbercall` / `doall` fields - Odoo 17 removed them from
+            ir.cron. A cron now simply runs until it is deactivated.
         -->
         <record id="cron_et_fiscal_submit_pending" model="ir.cron">
             <field name="name">Fiscal: submit pending and failed documents</field>
@@ -14,7 +17,6 @@
             <field name="code">model.cron_submit_pending()</field>
             <field name="interval_number">5</field>
             <field name="interval_type">minutes</field>
-            <field name="numbercall">-1</field>
             <field name="active" eval="True"/>
         </record>
     </data>

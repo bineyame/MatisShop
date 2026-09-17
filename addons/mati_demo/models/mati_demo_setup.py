@@ -136,6 +136,8 @@ class MatiDemoSetup(models.TransientModel):
         self._seed_feature_groups()
         company = self._seed_company()
         self._seed_accounting(company)
+        # Must come AFTER the chart of accounts: see _seed_currency.
+        self._seed_currency(company)
         self._seed_partners(company)
         attributes = self._seed_attributes()
         templates = self._seed_products(company, attributes)
@@ -202,23 +204,52 @@ class MatiDemoSetup(models.TransientModel):
         ethiopia = self.env.ref("base.et", raise_if_not_found=False)
         if ethiopia:
             values["country_id"] = ethiopia.id
-        if etb:
-            if not etb.active:
-                etb.active = True
-            # Changing the currency is only possible before any journal entry
-            # exists. On a freshly bootstrapped database it always is.
-            if company.currency_id != etb:
-                try:
-                    company.write({"currency_id": etb.id})
-                except Exception:  # noqa: BLE001
-                    _logger.warning(
-                        "could not switch the company currency to ETB; "
-                        "continuing with %s",
-                        company.currency_id.name,
-                    )
+        if etb and not etb.active:
+            etb.active = True
         company.write(values)
-        _logger.info("company: %s (TIN %s, %s)", company.name, COMPANY_TIN, company.currency_id.name)
+        # NB: the currency is deliberately NOT set here - see _seed_currency.
+        _logger.info("company: %s (TIN %s)", company.name, COMPANY_TIN)
         return company
+
+    @api.model
+    def _seed_currency(self, company):
+        """Set ETB, AFTER the chart of accounts has been loaded.
+
+        ``account.chart.template.try_loading()`` writes the company currency
+        from ``account_fiscal_country_id``, which for the generic chart is the
+        United States. Setting ETB before loading the chart therefore looks
+        like it works and is then silently overwritten with USD - and every
+        price in the demo comes out in dollars.
+
+        Changing the currency is only possible while no journal entry exists,
+        which on a freshly seeded database is the case.
+        """
+        etb = self.env.ref("base.ETB", raise_if_not_found=False)
+        ethiopia = self.env.ref("base.et", raise_if_not_found=False)
+        if not etb:
+            _logger.warning("ETB currency not found; leaving %s", company.currency_id.name)
+            return False
+        if not etb.active:
+            etb.active = True
+
+        values = {}
+        if ethiopia and company.account_fiscal_country_id != ethiopia:
+            values["account_fiscal_country_id"] = ethiopia.id
+        if company.currency_id != etb:
+            values["currency_id"] = etb.id
+        if values:
+            try:
+                company.write(values)
+            except Exception:  # noqa: BLE001
+                _logger.exception("could not switch the company to ETB")
+                return False
+
+        _logger.info(
+            "company currency: %s (fiscal country %s)",
+            company.currency_id.name,
+            company.account_fiscal_country_id.code or "-",
+        )
+        return True
 
     @api.model
     def _seed_accounting(self, company):
@@ -651,9 +682,10 @@ class MatiDemoSetup(models.TransientModel):
     @api.model
     def _seed_pos_configs(self, company, warehouses, pricelists):
         Config = self.env["pos.config"]
-        payment_methods = self._ensure_pos_payment_methods(company)
 
         for name, warehouse_code, pricelist_key in POS_CONFIGS:
+            # One cash payment method per till, not one shared between them.
+            payment_methods = self._ensure_pos_payment_method(company, warehouse_code)
             warehouse = warehouses.get(warehouse_code)
             pricelist = pricelists.get(pricelist_key)
             if not warehouse or not pricelist:
@@ -686,23 +718,49 @@ class MatiDemoSetup(models.TransientModel):
         return True
 
     @api.model
-    def _ensure_pos_payment_methods(self, company):
-        Method = self.env["pos.payment.method"]
-        methods = Method.search([("company_id", "=", company.id)])
-        if methods:
-            return methods
+    def _ensure_pos_payment_method(self, company, shop_code):
+        """One cash payment method per point of sale.
 
-        journal = self.env["account.journal"].search(
-            [("type", "=", "cash"), ("company_id", "=", company.id)], limit=1
+        Odoo forbids sharing a cash payment method between tills
+        (``pos.config._check_payment_method_ids_journal``), and rightly so:
+        each shop reconciles its own cash drawer, so each needs its own
+        payment method backed by its own cash journal.
+        """
+        Method = self.env["pos.payment.method"]
+        name = f"Cash ({shop_code})"
+        method = Method.search(
+            [("name", "=", name), ("company_id", "=", company.id)], limit=1
         )
+        if method:
+            return method
+
+        journal = self._ensure_cash_journal(company, shop_code)
         if not journal:
-            _logger.warning("no cash journal found; POS payment method not created")
+            _logger.warning("no cash journal for %s; POS payment method not created", shop_code)
             return Method
-        return Method.create(
+
+        method = Method.create(
+            {"name": name, "company_id": company.id, "journal_id": journal.id}
+        )
+        _logger.info("pos: payment method %s on journal %s", name, journal.code)
+        return method
+
+    @api.model
+    def _ensure_cash_journal(self, company, shop_code):
+        Journal = self.env["account.journal"]
+        # Journal codes are short and must be unique per company.
+        code = f"CSH{shop_code[-1]}" if shop_code[-1].isdigit() else f"C{shop_code[:4]}"
+        journal = Journal.search(
+            [("code", "=", code), ("company_id", "=", company.id)], limit=1
+        )
+        if journal:
+            return journal
+        return Journal.create(
             {
-                "name": "Cash",
+                "name": f"Cash {shop_code}",
+                "type": "cash",
+                "code": code,
                 "company_id": company.id,
-                "journal_id": journal.id,
             }
         )
 
