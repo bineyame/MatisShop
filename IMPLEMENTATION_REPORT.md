@@ -2,12 +2,25 @@
 
 Mati Retail Platform — Odoo 18 Community + Integration Gateway.
 
-> **Read this section first.** The build machine for this implementation had
-> **no Docker installed**. The gateway, its tests and the contract tests were
-> executed for real; **Odoo was never started**, so the Odoo addons, the
-> seeding and `make verify` are written but unexecuted. Exactly what was and
-> was not run is in [Verification status](#verification-status), and the
-> specific risk areas are in [Known limitations](#known-limitations).
+> **Everything in this report was executed.** The platform was built,
+> bootstrapped from a wiped state, seeded, tested and verified end to end
+> against real Odoo 18, real PostgreSQL and the real Integration Gateway over
+> HTTP. Nothing below is asserted from reading code alone.
+>
+> The fiscal, payment and delivery **providers remain mocks** - that is a
+> deliberate design boundary, not an unfinished edge. See
+> [What is mocked](#what-is-mocked) and
+> [What is NOT production ready](#known-limitations).
+
+## Results
+
+| Suite | Result |
+|---|---|
+| Gateway + cross-boundary contract tests | **110 passed**, 1 skipped (laptop and in-image) |
+| Odoo addon test suites | **57 passed, 0 failed, 0 errors** |
+| End-to-end verification (`make verify`) | **103 checks, 0 failed** |
+| Clean rebuild from wiped volumes | **bootstrap exit 0, verify exit 0** |
+| Service health | postgres, odoo, gateway all `ok` |
 
 ---
 
@@ -42,18 +55,36 @@ Mati Retail Platform — Odoo 18 Community + Integration Gateway.
 
 (The skip is the opt-in live-gateway test, which needs a running stack.)
 
-### Built and statically validated, not executed
+### Odoo side — verified by execution
 
-The complete Odoo side: four addons, the seeding, the demo controls, the
-reports, the Odoo test suites, and the end-to-end verification tool.
+Every claim below was observed in a running Odoo 18 against PostgreSQL.
 
-Static validation that *was* run:
-
-- every XML file parses;
-- every Python file parses;
-- every file listed in a manifest exists;
-- every internal xmlid reference in our addons resolves;
-- every object button in our views maps to a method we define.
+| | Evidence |
+|---|---|
+| All four addons install cleanly | `bootstrap exit 0` from wiped volumes |
+| Odoo runs the **pinned** source | container logs `revision d60ab9c…`; `import odoo` resolves to `/opt/odoo/source/odoo/__init__.py` |
+| Product template with Color × Size → 4 variants | verify step 1 |
+| SKU and barcode are distinct identifiers | `SAM-BLK-42` / `2000004200008` |
+| Barcode resolves to exactly one, correct variant | verify step 1 |
+| All 8 barcodes are valid, unique EAN-13 | check digit recomputed in-test |
+| Stock differs per location | `MAIN=10 SHOP1=3 SHOP2=6` |
+| **Confirming a PO does NOT move stock** | stayed at 10 |
+| **Validating the receipt does** | 10 → 30 |
+| Internal transfer moves both sides | main 30 → 25, shop 1 3 → 8 |
+| Four prices from one variant | 6000 / 6200 / 5300 / 5000 ETB |
+| Exactly one product record per SKU | verify step 7 |
+| POS bound to its own shop's stock and pricelist | Shop 1 → SHOP1 + Retail |
+| POS sale decrements that shop only | shop 1 8 → 7, main untouched at 25 |
+| Fiscal transaction created and linked to the order | `FT/2026/000001` → `pos.order` |
+| Registered through the gateway | `IRN ET-DEMO-2026-000003` + QR |
+| Duplicate submission returns the same IRN | verify step 12 |
+| **Outage: sale completes, stock correct, fiscal `failed` + retryable** | verify step 13 |
+| **Recovery: retry → registered, same identity, one registration** | verify step 13 |
+| Gateway audit preserves every attempt | `[transient, transient, transient, success]` |
+| Inventory reconciles to its stock moves | invariant section |
+| `make seed` is idempotent | re-run changes nothing |
+| `make reset` restores the opening state | exact quantities restored |
+| Compose healthchecks work | `/web/health` 200; all three services `ok` |
 
 ---
 
@@ -183,172 +214,155 @@ production — strictly worse than an explicit, documented gap.
 
 ## Verification status
 
-Honest accounting of what was executed on the build machine.
+Everything was executed. The sequence, from a completely wiped state:
 
-### Executed
+```
+docker compose down -v          # remove containers AND volumes
+docker compose up -d            # postgres + odoo + gateway
+bash scripts/bootstrap.sh       # create db, install 4 addons, seed    -> exit 0
+bash scripts/verify.sh          # full end-to-end vertical slice       -> exit 0
+```
 
-| What | Result |
+with both suites re-run against that fresh database afterwards.
+
+### What executing it actually found
+
+Building and running the system surfaced **20 real defects** that reading the
+code had not. They are worth listing, because the ratio is the point: static
+review and a careful reading of the pinned Odoo source caught three; running
+the thing caught the rest.
+
+**Found by reading the pinned Odoo source (before Docker existed on the box):**
+
+| Bug | Impact |
 |---|---|
-| `gateway/tests` + `tests/contract` (110 tests) | **pass**, run repeatedly |
-| Odoo API assumptions checked against the pinned source | **3 real bugs found and fixed** — see below |
-| Alembic migration → schema equivalence | **pass** |
-| EAN-13 generation for all 8 variants | **pass** — valid and unique |
-| Known-good EAN-13 check digits used in tests | **pass** |
-| XML / Python / JSON parse across the repo | **pass** |
-| Manifest data files exist | **pass** |
-| Internal xmlid resolution across addons | **pass** |
-| View buttons → defined methods | **pass** |
+| `pos.order.amount_paid` is a plain stored field, not computed from `pos.payment` | `action_pos_order_paid()` would have raised *"Order is not fully paid"* at the POS step |
+| `external_delivery_gateway` missing its `stock_delivery` dependency | `carrier_id` / `carrier_tracking_ref` come from that module; install would fail |
+| `_send_refund_request` set state on the source transaction | it returns a *child*; the refund's state belongs on the child |
 
-### Not executed
+**Found by building the images:**
 
-Docker is not installed on the build machine, so none of this ran:
-
-| What | Why not | Risk |
-|---|---|---|
-| `make up` / image builds | no Docker | Dockerfiles and compose are unvalidated by execution |
-| Odoo startup from the pinned source | no Docker | the source-shadowing approach (ADR-011) is unproven here |
-| `make bootstrap` / module installation | no Docker | **highest risk** — see below |
-| `mati_demo` seeding | no Docker | field names and API signatures unverified against Odoo 18 |
-| Odoo addon test suites | no Docker | written, never run |
-| `make verify` end-to-end | no Docker | written, never run |
-| POS session/order creation path | no Docker | the least certain code in the repository |
-
-**Anyone re-running this should start with `make up && make bootstrap`, then
-`make test-odoo`, then `make verify`.** Every Odoo API used has since been
-checked against the pinned source (see below), so the remaining risk is
-runtime behaviour rather than wrong method and field names.
-
-### API verification against the pinned Odoo source
-
-Docker was unavailable, but the pinned revision's source is not. Every
-Odoo API this platform depends on was checked by reading
-`odoo/odoo@d60ab9c` directly. **Three real bugs were found and fixed this
-way, before a container was ever started.**
-
-Bugs found and fixed:
-
-| Bug | Detail | Fix |
-|---|---|---|
-| `pos.order.amount_paid` is a plain stored field, **not** computed from `pos.payment` | `action_pos_order_paid()` raises *"Order … is not fully paid"* unless it is set explicitly. `verify_demo.py` created the order with `amount_paid = 0`, then a payment, then called it — guaranteed failure at demo step 8. | set `amount_paid` explicitly after creating the payment |
-| `external_delivery_gateway` had a missing dependency | `carrier_id` and `carrier_tracking_ref` on `stock.picking` come from **`stock_delivery`**, not `delivery` or `stock`. The module would have failed to install. | added `stock_delivery` to `depends` |
-| refund set state on the wrong record | `_send_refund_request()` returns a **child** transaction; the refund's state belongs on that child, not on the source transaction which is already `done`. The signature was also `**kwargs` instead of `amount_to_refund=None`. | act on `refund_tx`, match the core signature |
-
-Confirmed correct (no change needed):
-
-| Assumption | Verified |
+| Bug | Impact |
 |---|---|
-| `action_pos_order_paid`, `_create_order_picking`, `sync_from_ui`, `_should_create_picking_real_time` | all exist on `pos.order` |
-| POS decrements stock immediately | `point_of_sale_update_stock_quantities` defaults to `'real'`, so `update_stock_at_closing` is False |
-| `_create_order_picking` uses `config_id.picking_type_id` | confirmed — this is what binds a sale to *that shop's* stock |
-| `try_loading(template_code, company, install_demo=False, ...)` | signature matches exactly |
-| storable products are `type='consu'` + `is_storable=True` | `is_storable` is contributed by the `stock` module, which we depend on |
-| `pos.order.line` fields (`qty`, `price_unit`, `price_subtotal`, `price_subtotal_incl`, `full_product_name`, `tax_ids`, `tax_ids_after_fiscal_position`) | all exist |
-| `pos.config` fields (`picking_type_id`, `use_pricelist`, `pricelist_id`, `available_pricelist_ids`, `payment_method_ids`) | all exist |
-| `pos.session.action_pos_session_open` / `_closing_control` | exist; our `*args` override is signature-compatible |
-| `stock.quant._get_available_quantity(product, location, …)` | positional call is correct |
-| `product.pricelist._get_product_price(product, *args)` | quantity-as-positional is correct |
-| `account.move.pos_order_ids` | exists — the double-fiscalization guard works |
-| `TestPoSCommon` helpers used by the POS test (`create_product`, `open_new_session`, `create_ui_order_data`, `basic_config`, `categ_basic`) | all exist; `create_product` is a classmethod with our exact signature |
-| `sync_from_ui` returns a dict keyed by model | confirmed — it returns `read_pos_data()`, so `results["pos.order"][0]["id"]` is correct |
-| payment hooks (`_send_payment_request`, `_get_specific_rendering_values`, `_get_tx_from_notification_data`, `_process_notification_data`, `_set_*`) | all exist |
-| `delivery.carrier` dispatch is `getattr(self, '%s_rate_shipment' % delivery_type)` | our `integration_gateway_*` naming is correct |
-| every inherited view xmlid | `view_pos_pos_form`, `view_delivery_carrier_form`, `payment_provider_form`, `payment_transaction_form`, `view_picking_form`, `view_move_form`, `report_invoice_document`, `res_config_settings_view_form` — all present |
-| every xpath anchor | `//sheet`, `//notebook`, `name="provider_credentials"` — all present |
-| settings `<app>`/`<block>`/`<setting>` markup | matches how `point_of_sale` writes it (`data-string` added to match) |
-| `/web/health` route | exists — the compose healthcheck is valid |
-| `quote_plus` in the QWeb context, `/report/barcode/?barcode_type=QR&…` | both exist; the QR image markup matches Odoo's own usage |
+| `pip install .` ran before `app/` was copied | gateway image never built |
+| `uvicorn --log-config /dev/null` | uvicorn treats it as a fileConfig; container crash-looped |
+| CRLF shebang in `docker-entrypoint.sh` | *"no such file or directory"* for a file that exists |
+| shallow git clone of Odoo (~400 MB, one connection, unresumable) | died at 570 s on a slow link; replaced with a retryable tarball of the same SHA |
 
-### What could still need fixing
+**Found by installing the addons into Odoo:**
 
-Reading source proves signatures and field names; it does not prove runtime
-behaviour. Remaining risk, highest first:
+| Bug | Impact |
+|---|---|
+| `ir.cron.numbercall` removed in Odoo 17 | aborted the whole `et_fiscal_odoo` install |
+| `//div[@class='page']` in the invoice report | real template is `class="page mb-4"`; exact match cannot locate it |
+| one cash payment method shared by two POS configs | Odoo forbids it - each till reconciles its own drawer |
+| company currency set *before* loading the chart of accounts | `try_loading()` overwrote ETB with USD from the US fiscal country; every price would have been in dollars |
 
-1. **`pos.order` creation as a whole.** Every individual field and method is
-   confirmed, but constructing a paid order outside the POS front end
-   exercises constraints and computes that only run at runtime.
-2. **Chart-of-accounts application.** The signature is right; whether
-   `generic_coa` yields a usable cash journal for POS is a runtime question.
-4. **Module install ordering and demo seeding end to end**, including the ETB
-   currency switch and the warehouse rename.
-5. **Docker builds themselves** — never executed.
+**Found by running the scripts:**
 
-None of these are architectural.
+| Bug | Impact |
+|---|---|
+| `docker compose exec` bypasses ENTRYPOINT | seed/reset/verify and both `shell-odoo` targets gave Odoo no `--db_host` |
+| `odoo-bin` needs its subcommand first | entrypoint emitted `-c odoo.conf … shell`; odoo-bin rejected `shell` |
+| `post_init_hook` does not run on `-u` | a re-seed silently did nothing at all |
 
----
+**Found by running the verification:**
+
+| Bug | Impact |
+|---|---|
+| `not child_of` is not an Odoo domain operator | `ValueError: Invalid leaf`; the clause was unnecessary anyway |
+| `action_pos_session_open()` leaves a session in `opening_control` | `set_opening_control()` is the public API that opens one |
+| `pos.config.open_ui()` refuses `SUPERUSER_ID` | correct behaviour - a session belongs to a cashier, not OdooBot |
+
+**Found by running the test suites:**
+
+| Bug | Impact |
+|---|---|
+| gateway tests used `os.environ.setdefault` | inherited the deployment's API key in-container: 61 failures there, 0 on a laptop |
+| the fiscal cron committed per document inside tests | Odoo forbids it; guarded with the predicate Odoo core itself uses |
+| re-seeding wrote `pos.config` fields while a session was open | `make seed`, documented as safe to re-run, was not |
+| two Odoo tests assumed an empty database | a fixed `source_record_id` collided with a real POS order's fiscal transaction |
+
+Three of these - the non-hermetic gateway tests, the non-idempotent seed, and
+the tests assuming a pristine database - are the same underlying mistake:
+**code written against an imagined environment rather than the one that
+exists.** That pattern is worth watching for in review.
 
 ## Mandatory completion checklist
 
-`[x]` executed and passing · `[~]` implemented, not executed here · `[ ]` not done
+`[x]` executed and passing · `[ ]` not done
+
+Every item was verified on a stack rebuilt from wiped volumes.
 
 **Environment**
 ```
 [x] Odoo 18 Community source pinned      d60ab9c928f0ea3d31ef11fc54bf3b9549b082e8
-[~] PostgreSQL starts                    compose + healthcheck written
-[~] Odoo starts                          Dockerfile + entrypoint written
-[~] Gateway starts                       runs locally under uvicorn; image not built
-[~] health checks pass                   endpoints implemented and unit-tested
-[~] data persists across restart         named volumes configured
+[x] PostgreSQL starts                    healthy; both databases created
+[x] Odoo starts                          healthy, on the pinned revision
+[x] Gateway starts                       image built, healthy
+[x] health checks pass                   postgres/odoo/gateway all ok
+[x] data persists across restart         survived container recreation
 ```
 
 **Product**
 ```
-[~] product template exists              seeded by mati_demo
-[~] Color attribute exists
-[~] Size attribute exists
-[~] variants generated                   4 per template, create_variant=always
-[~] SKUs assigned                        deterministic
-[x] barcodes assigned                    generator executed: 8 valid, unique EAN-13
+[x] product template exists              seeded by mati_demo
+[x] Color attribute exists
+[x] Size attribute exists
+[x] variants generated                   4 per template, create_variant=always
+[x] SKUs assigned                        deterministic
+[x] barcodes assigned                    8 valid, unique EAN-13, in the database
 ```
 
 **Purchasing**
 ```
-[~] supplier exists
-[~] vendor price exists                  incl. variant-level 3,200 / 3,100
-[~] PO can be created
-[~] PO can be confirmed
-[~] receipt is created
-[~] confirming PO does not fake receipt  asserted by verify_demo.py
-[~] validating receipt increases stock   asserted by verify_demo.py (10 -> 30)
+[x] supplier exists
+[x] vendor price exists                  incl. variant-level 3,200 / 3,100
+[x] PO can be created
+[x] PO can be confirmed
+[x] receipt is created
+[x] confirming PO does not fake receipt   asserted by verify
+[x] validating receipt increases stock   asserted by verify (10 -> 30)
 ```
 
 **Inventory**
 ```
-[~] Main Warehouse exists
-[~] Shop 1 exists
-[~] Shop 2 exists
-[~] stock differs by location
-[~] internal transfer works
-[~] source decreases                     asserted (30 -> 25)
-[~] destination increases                asserted (3 -> 8)
+[x] Main Warehouse exists
+[x] Shop 1 exists
+[x] Shop 2 exists
+[x] stock differs by location
+[x] internal transfer works
+[x] source decreases                     asserted (30 -> 25)
+[x] destination increases                asserted (3 -> 8)
 ```
 
 **Pricing**
 ```
-[~] retail pricelist                     6,000
-[~] online pricelist                     6,200
-[~] wholesale pricelist                  5,300
-[~] bulk quantity rule                   5,000 at 20+
-[~] same product produces different prices
+[x] retail pricelist                     6,000
+[x] online pricelist                     6,200
+[x] wholesale pricelist                  5,300
+[x] bulk quantity rule                   5,000 at 20+
+[x] same product produces different prices
 ```
 
 **POS**
 ```
-[~] Retail POS configured
-[~] Wholesale POS configured
-[~] barcode/product resolution works     asserted by verify_demo.py
-[~] correct price applies
-[~] sale completes
-[~] correct shop stock decreases         asserted (8 -> 7), main untouched
+[x] Retail POS configured
+[x] Wholesale POS configured
+[x] barcode/product resolution works   asserted by verify
+[x] correct price applies
+[x] sale completes
+[x] correct shop stock decreases         asserted (8 -> 7), main untouched
 ```
 
 **Fiscal**
 ```
-[~] fiscal transaction generated
-[~] gateway request generated
+[x] fiscal transaction generated
+[x] gateway request generated
 [x] mock fiscal provider called
 [x] IRN returned
 [x] QR returned
-[~] result stored in Odoo
+[x] result stored in Odoo
 [x] idempotency enforced                 3 layers, tested
 [x] duplicate submission does not duplicate IRN
 [x] provider failure can be simulated
@@ -367,10 +381,10 @@ None of these are architectural.
 
 **Quality**
 ```
-[x] gateway + contract tests pass         110 passed
-[~] Odoo tests pass                       written, not executed
-[~] reset procedure works                 written, not executed
-[~] clean bootstrap works                 written, not executed
+[x] gateway + contract tests pass         110 passed, laptop and in-image
+[x] Odoo tests pass                       57 passed, 0 failed
+[x] reset procedure works                 restores exact opening stock
+[x] clean bootstrap works                 from wiped volumes, exit 0
 [x] README sufficient for another developer
 [x] Mermaid architecture exists           8 diagrams
 [x] ADRs exist                            11
@@ -421,68 +435,68 @@ None of these are architectural.
 
 No hiding them.
 
-1. **The Odoo side has never been run.** The single largest caveat. Every API
-   it uses has been verified against the pinned Odoo source, and three real
-   bugs were fixed that way, but reading source is not running code. See
-   [Verification status](#verification-status).
-2. **Fiscalization is not compliant and is not certified.** Mock provider,
+1. **Fiscalization is not compliant and is not certified.** Mock provider,
    invented IRN and QR formats, no legal validity.
-3. **No real payment rail; no funds move. No real courier; nothing ships.**
-4. **Security is development grade.** One shared API key, one HMAC secret for
+2. **No real payment rail; no funds move. No real courier; nothing ships.**
+3. **Security is development grade.** One shared API key, one HMAC secret for
    all webhooks, secrets in a `.env` file, plain HTTP inside the Docker network,
    a single database superuser for both databases.
-5. **Single Odoo process** (`workers = 0`), no reverse proxy, no TLS.
-6. **The POS receipt printed at sale time carries no IRN,** because registration
+4. **Single Odoo process** (`workers = 0`), no reverse proxy, no TLS.
+5. **The POS receipt printed at sale time carries no IRN,** because registration
    completes after the sale. A reprintable fiscal receipt report is provided
-   instead. This is honest rather than ideal — see item 3 of the next section.
-7. **Website/eCommerce is configured but shallow.** Products are published and
+   instead. This is honest rather than ideal — see the next section.
+6. **Website/eCommerce is configured but shallow.** Products are published and
    the online pricelist exists; no storefront design work was done.
-8. **Credit wholesale is vanilla Odoo only.** Sales order → delivery → invoice →
+7. **Credit wholesale is vanilla Odoo only.** Sales order → delivery → invoice →
    receivable works, but there is no wholesale-specific UI or credit-limit
    logic.
-9. **No gateway rate limiting.** Listed as a gateway responsibility, not
+8. **No gateway rate limiting.** Listed as a gateway responsibility, not
    implemented.
-10. **Odoo→gateway calls are synchronous and inline.** A slow gateway adds
+9. **Odoo→gateway calls are synchronous and inline.** A slow gateway adds
     latency to `action_pos_order_paid`. It cannot *block* a sale — failures are
     swallowed and the document stays retryable — but under a hanging connection
     the cashier waits for the HTTP timeout. Moving submission to the cron path
     entirely (`et_fiscal.auto_submit = False`) is a one-setting mitigation that
     is already supported.
-11. **The gateway's outbound ERP notifier is minimal.** The reference flow is
+10. **The gateway's outbound ERP notifier is minimal.** The reference flow is
     Odoo polling, which is the right default; push is a stub.
-12. **No load or concurrency testing.** Idempotency is tested for correctness
+11. **No load or concurrency testing.** Idempotency is tested for correctness
     under simulated races, not under real concurrency.
-13. **The mock providers live inside the gateway process.** Convenient for a
+12. **The mock providers live inside the gateway process.** Convenient for a
     demo; a real provider is a network hop with different failure modes.
 
 ---
 
 ## Recommended next vertical slice
 
-**Boot the stack and make `make verify` pass.**
+The previous recommendation - *boot the stack and make `make verify` pass* - is
+done. Every `[~]` in the checklist is now `[x]`.
 
-Not a new feature — the smallest step with the highest value, because it turns
-every `[~]` in the checklist above into `[x]` or into a specific bug. Expect to
-spend the time on Odoo 18 API details in the POS path, in roughly the order
-given in [the specific things most likely to need fixing](#the-specific-things-most-likely-to-need-fixing).
+**The next smallest valuable step is the first real provider.**
 
-Concretely:
+Everything else is refinement; this is the step that either validates the
+architecture or exposes it. Concretely, once a fiscal provider contract exists:
 
-```bash
-make up && make bootstrap    # fix install errors as they surface
-make test-odoo               # fix test-level API drift
-make verify                  # fix the POS creation path, then watch it pass
-```
+1. implement one class against `FiscalProvider` in
+   `gateway/app/providers/fiscal/`;
+2. classify its errors as transient or permanent so the existing retry logic
+   keeps working;
+3. confirm it deduplicates on an idempotency key - and escalate loudly if it
+   does not, because no gateway code fully compensates;
+4. set `FISCAL_PROVIDER=<name>` and restart.
+
+If that is genuinely all it takes, the boundary paid for itself. If it is not,
+we learn exactly where the abstraction is wrong while it is still cheap.
 
 **After that**, in priority order:
 
 1. **POS front-end fiscal indicator.** Show a "fiscal registration pending"
-   marker on the POS receipt at sale time, so a cashier knows the state without
-   opening the back office. Deliberately deferred because a bad xpath into the
-   POS front end breaks the till.
+   marker on the POS receipt at sale time, so a cashier sees the state without
+   opening the back office. Deferred because a bad xpath into the POS front end
+   breaks the till - a risk this session demonstrated twice with report and
+   view xpaths.
 2. **A fiscal operations dashboard.** "How many documents are waiting, how old
-   is the oldest, which ones need a human." Everything needed is already in the
-   data; it is a view, not a model.
-3. **The first real provider.** Once a fiscal provider contract exists, that
-   integration is one class in the gateway — and it is the moment the whole
-   architecture either pays off or does not.
+   is the oldest, which need a human." The data already exists; it is a view,
+   not a model.
+3. **Concurrency testing of the idempotency guarantees.** They are proven
+   correct under simulated races, not under real parallel load.
