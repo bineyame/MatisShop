@@ -18,11 +18,31 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-os.environ.setdefault("GATEWAY_ENV", "test")
-os.environ.setdefault("GATEWAY_API_KEY", "test-api-key")
-os.environ.setdefault("GATEWAY_WEBHOOK_SECRET", "test-webhook-secret")
-os.environ.setdefault("GATEWAY_RETRY_BASE_DELAY_MS", "0")
-os.environ.setdefault("GATEWAY_MAX_ATTEMPTS", "3")
+# Forced, not setdefault: the suite must be hermetic. Running inside the
+# gateway container injects the deployment's own GATEWAY_API_KEY and provider
+# modes, and a test run that silently adopts ambient configuration passes on a
+# laptop and fails in CI for reasons nobody can see.
+os.environ.update(
+    {
+        "GATEWAY_ENV": "test",
+        "GATEWAY_API_KEY": "test-api-key",
+        "GATEWAY_WEBHOOK_SECRET": "test-webhook-secret",
+        "GATEWAY_RETRY_BASE_DELAY_MS": "0",
+        "GATEWAY_MAX_ATTEMPTS": "3",
+        "GATEWAY_LOG_LEVEL": "WARNING",
+        # Provider defaults the assertions assume; individual tests override
+        # these through fixtures that clear the settings cache.
+        "FISCAL_PROVIDER": "mock",
+        "PAYMENT_PROVIDER": "mock",
+        "DELIVERY_PROVIDER": "mock",
+        "MOCK_FISCAL_FAILURE_MODE": "false",
+        "MOCK_FISCAL_IRN_PREFIX": "ET-DEMO",
+        "MOCK_PAYMENT_MODE": "auto_success",
+        "MOCK_DELIVERY_MODE": "auto_advance",
+        # Never let a stray ERP callback URL escape during a test run.
+        "ERP_WEBHOOK_URL": "",
+    }
+)
 
 import httpx  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
