@@ -25,17 +25,37 @@ Three options were considered:
 
 Option 3. `odoo/Dockerfile` starts `FROM odoo:18.0` — which supplies the exact
 OS packages, Python dependencies and wkhtmltopdf build Odoo 18 expects — and
-then fetches exactly one commit of the official source:
+then unpacks the official source tree at exactly one commit:
 
 ```dockerfile
 ARG ODOO_REVISION            # d60ab9c928f0ea3d31ef11fc54bf3b9549b082e8
-RUN git init . \
- && git remote add origin https://github.com/odoo/odoo.git \
- && git fetch --depth 1 origin "${ODOO_REVISION}" \
- && git checkout -q FETCH_HEAD \
- && git rev-parse HEAD > /opt/odoo/REVISION \
- && rm -rf .git
+RUN curl -fL --retry 8 --retry-delay 5 --retry-all-errors \
+      -o /tmp/odoo-source.tar.gz \
+      "https://codeload.github.com/odoo/odoo/tar.gz/${ODOO_REVISION}" \
+ && tar -xzf /tmp/odoo-source.tar.gz -C "${ODOO_SOURCE}" --strip-components=1 \
+ && test -f "${ODOO_SOURCE}/odoo-bin" \
+ && echo "${ODOO_REVISION}" > /opt/odoo/REVISION
 ```
+
+### Why a tarball rather than a shallow clone
+
+This started as `git fetch --depth 1 origin <sha>`, which is the obvious way
+to pin a revision. It failed in practice:
+
+```
+error: RPC failed; curl 56 GnuTLS recv error (-9)
+fatal: fetch-pack: invalid index-pack output
+```
+
+A shallow clone of Odoo is a single ~400 MB pack delivered over one
+long-lived connection. On a slow or flaky link it gets 90% of the way through
+and dies, and git cannot resume — the whole transfer restarts.
+
+The tarball is the same pinned tree (the URL contains the commit SHA, so
+GitHub serves exactly that tree, equivalent to `git archive <sha>`), but it is
+a plain HTTPS GET that `curl --retry` can retry and resume. Since the previous
+design deleted `.git` immediately afterwards, the git machinery was buying us
+nothing but fragility. `git` is no longer installed in the image at all.
 
 The entrypoint runs `odoo-bin` from `/opt/odoo/source`. Because Python puts a
 script's own directory first on `sys.path`, the pinned source shadows the
@@ -47,14 +67,14 @@ The container logs the revision it is running at every start.
 ## Consequences
 
 **Good:** a clean checkout always builds the same Odoo. The running revision is
-printed in the logs and readable at `/opt/odoo/REVISION`. There is no editable
-copy of Odoo core in the working tree, so ADR-001 is enforced by construction
-rather than by discipline. A shallow single-commit fetch is far smaller than a
-full clone.
+printed in the logs and readable at `/opt/odoo/REVISION`. There is no copy of
+Odoo core in the working tree at all, so ADR-001 is enforced by construction
+rather than by discipline. The download is retryable and resumable, which
+matters on the kind of connection this system is actually deployed over.
 
 **Bad:** the first build takes several minutes and needs network access to
-GitHub. `.git` is removed, so you cannot `git log` inside the container — the
-pinned SHA is recorded in `compose.yaml` and in `/opt/odoo/REVISION` instead.
+GitHub. There is no git history inside the container — the pinned SHA is
+recorded in `compose.yaml` and in `/opt/odoo/REVISION` instead.
 
 **Residual risk:** the base image supplies dependency versions while the source
 supplies application code, so in principle they could drift. In practice both

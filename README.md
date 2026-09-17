@@ -84,7 +84,8 @@ Full detail: [`docs/architecture.md`](docs/architecture.md).
 
 ## Source and version pinning
 
-Odoo 18 Community is built **from the official Git source at a pinned commit**:
+Odoo 18 Community is built **from the official source at a pinned commit**
+(fetched as a tarball of that exact SHA, which is retryable on a slow link):
 
 ```
 repository  https://github.com/odoo/odoo
