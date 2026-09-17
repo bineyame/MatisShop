@@ -7,7 +7,10 @@ case "${1:-serve}" in
     echo "[gateway] applying migrations..."
     alembic upgrade head
     echo "[gateway] starting uvicorn on 0.0.0.0:8000"
-    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-config /dev/null
+    # No --log-config: uvicorn treats the path as a fileConfig and refuses an
+    # empty one. configure_logging() in the app lifespan already takes over
+    # uvicorn's loggers and routes them through the JSON formatter.
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8000
     ;;
   migrate)
     exec alembic upgrade head
