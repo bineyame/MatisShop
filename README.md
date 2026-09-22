@@ -506,7 +506,9 @@ docs/                   architecture, demo script, contracts, ADRs
 | [`docs/vanilla-vs-custom.md`](docs/vanilla-vs-custom.md) | what is Odoo vs. what we wrote |
 | [`docs/fiscal-integration.md`](docs/fiscal-integration.md) | the fiscal rail in detail |
 | [`docs/integration-contracts.md`](docs/integration-contracts.md) | wire contracts; adding a provider |
+| [`docs/providers.md`](docs/providers.md) | provider selection, credentials, adding a real one |
 | [`docs/decisions/`](docs/decisions/) | 11 architecture decision records |
+| [`DEMO_READINESS_REPORT.md`](DEMO_READINESS_REPORT.md) | demo status, provider switching, pilot blockers |
 | [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md) | what works, what is mocked, what remains |
 
 ## License
