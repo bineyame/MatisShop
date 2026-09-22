@@ -59,9 +59,9 @@ flowchart TB
     end
 
     subgraph PROV["PROVIDERS"]
-        FP["Fiscal: mock / MoR / accredited"]
-        PP["Payment: mock / ArifPay / Chapa / Telebirr"]
-        DP["Delivery: mock / KLIK"]
+        FP["Fiscal: mock | mor | accredited"]
+        PP["Payment: mock | provider_a | provider_b"]
+        DP["Delivery: mock | provider_a"]
     end
 
     PUR --> INV
@@ -87,12 +87,12 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    S[Supplier<br/>ABC Footwear] --> PO[Purchase Order]
-    PO -->|confirm: no stock yet| RCP[Incoming Shipment]
-    RCP -->|validate: stock moves| MAIN[(Main Warehouse)]
-    MAIN --> TR[Internal Transfer]
-    TR --> SHOP1[(Shop 1 Retail)]
+    S[Supplier<br/>ABC Footwear] --> PO[Purchase Order<br/>Deliver To: Shop 1]
+    PO -->|confirm: no stock yet| RCP[Incoming Receipt]
+    RCP -->|validate: stock moves| SHOP1[(Shop 1)]
+    S -.->|a separate PO| SHOP2[(Shop 2)]
     SHOP1 --> SALE[POS Sale<br/>retail pricelist]
+    SHOP2 -.-> WSALE[POS Sale<br/>wholesale pricelist]
     SALE --> PAYMENT[Payment]
     PAYMENT --> DEC[Stock decrement]
     DEC --> FT[et.fiscal.transaction]
@@ -105,6 +105,14 @@ flowchart LR
 
 Every arrow before `et.fiscal.transaction` is **vanilla Odoo**. Everything from
 there on is the custom integration boundary.
+
+**There is no central warehouse.** Mati's stock goes from the supplier straight
+into the shop that ordered it, so the model has exactly two stock locations -
+Shop 1 and Shop 2 - and a purchase order names which one it is destined for.
+Both shops belong to **one legal company with one TIN**; they are branches, not
+separate entities, so Odoo multi-company is deliberately not used. Shop-level
+separation comes from stock locations and POS configurations instead, which is
+what makes "what did Shop 1 sell?" answerable without splitting the business.
 
 ## Fiscalization is a compliance boundary
 
@@ -247,19 +255,17 @@ flowchart TB
     EX["external_payment_gateway<br/>maps to the normalized contract"]
     GW["Gateway /api/v1/payments<br/>idempotency + audit"]
     REG[Provider registry]
-    M["MockPaymentProvider<br/>implemented"]
-    A["ArifPayProvider<br/>extension point"]
-    C["ChapaProvider<br/>extension point"]
-    T["TelebirrProvider<br/>extension point"]
+    M["MockPaymentProvider<br/>implemented, default"]
+    A["ProviderAPaymentProvider<br/>adapter seam"]
+    B2["ProviderBPaymentProvider<br/>adapter seam"]
 
     OD --> EX --> GW --> REG
     REG --> M
-    REG -.not implemented.-> A
-    REG -.not implemented.-> C
-    REG -.not implemented.-> T
+    REG -.awaiting API doc.-> A
+    REG -.awaiting API doc.-> B2
 ```
 
-Switching rails is `PAYMENT_PROVIDER=arifpay` plus a restart. No Odoo change,
+Switching rails is `PAYMENT_PROVIDER=provider_a` plus a restart. No Odoo change,
 no database migration, no redeploy of the ERP.
 
 ## Deployment topology
@@ -334,10 +340,33 @@ This is a **development** environment. Before anything resembling production:
 | Backups | none | PITR on both databases; the fiscal audit trail is a legal record |
 | Monitoring | structured logs to stdout | log aggregation, alerting on `fiscal.failed` and retry-backlog depth |
 
+## Pilot deployment requirements
+
+This repository is a local demo environment. A first pilot with real
+transactions needs the following, and the architecture assumes them:
+
+| Requirement | Why |
+|---|---|
+| Managed VPS or cloud VM | Not shared web hosting - the gateway is a long-running service with its own database |
+| **Static outbound IP** | Some Ethiopian providers whitelist the caller's IP. A shifting egress address breaks the integration silently |
+| HTTPS with a real certificate | Provider callbacks and Odoo logins both require it |
+| A domain name | Certificates, webhook URLs, and something Mati can bookmark |
+| System administration access | Restarting the gateway to swap a provider is an operator task |
+| PostgreSQL backups (PITR) | Two databases. The fiscal audit trail is a legal record |
+| Odoo filestore backups | Attachments and reports live outside the database |
+| **Restore testing** | An untested backup is a hope, not a backup |
+| Provider secrets management | Out of `.env` and into a secret store |
+| Provider IP whitelisting | Coordinated with each provider once the server exists |
+| Monitoring and log aggregation | Alert on `fiscal.failed` and on retry-backlog depth |
+
+The static-IP requirement is the one that constrains hosting choice, so decide
+it before picking a provider. Everything else is ordinary operational hygiene.
+
 ## Further reading
 
 - `docs/vanilla-vs-custom.md` — what is Odoo, what we wrote, and why
 - `docs/fiscal-integration.md` — the fiscal rail in detail
 - `docs/integration-contracts.md` — the wire contracts and how to add a provider
 - `docs/demo-script.md` — the business walkthrough
+- `docs/providers.md` — provider selection, credentials and how to add a real one
 - `docs/decisions/` — the architecture decision records

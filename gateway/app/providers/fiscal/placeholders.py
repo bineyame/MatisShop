@@ -26,6 +26,7 @@ from __future__ import annotations
 from app.config import Settings
 from app.domain.contracts import FiscalDocumentRequest
 from app.domain.errors import ProviderNotConfigured
+from app.providers.config import require_settings
 from app.providers.fiscal.base import (
     FiscalCancellationResult,
     FiscalProvider,
@@ -43,6 +44,18 @@ class _UnimplementedFiscalProvider(FiscalProvider):
     def __init__(self, settings: Settings, session=None) -> None:  # noqa: ANN001 - uniform factory
         self.settings = settings
         self.session = session
+        # Validate on SELECTION, not on first use. Otherwise a gateway
+        # configured with FISCAL_PROVIDER=mor starts cleanly and only fails at
+        # the first sale of the day - exactly the silent misconfiguration the
+        # fail-fast rule exists to prevent.
+        require_settings(
+            settings,
+            self.name,
+            "fiscal",
+            self.required_settings,
+            implemented=False,
+            blockers=self.blockers,
+        )
 
     def _unavailable(self) -> ProviderNotConfigured:
         return ProviderNotConfigured(

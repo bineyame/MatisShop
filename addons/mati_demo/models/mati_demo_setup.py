@@ -7,111 +7,45 @@ in the architecture, not a feature.
 
 Design rules:
 
-* idempotent - running it twice changes nothing;
-* deterministic - same SKUs, same barcodes, same quantities every time, so the
-  demo script and the verification script can assert exact numbers;
+* idempotent - running it twice writes nothing at all;
+* deterministic - same SKUs, barcodes and quantities every time, so the demo
+  script and the verification script can assert exact numbers;
 * native mechanisms only - stock arrives through inventory adjustments and
   stock moves, never through direct writes to quantity fields.
 
-Generic Ethiopian fiscal / payment / delivery code does NOT belong here. It
-lives in et_fiscal_odoo, external_payment_gateway and external_delivery_gateway.
+The dataset itself lives in ``mati_demo_data.py``. Generic Ethiopian fiscal,
+payment or delivery code does NOT belong here - that is reusable
+infrastructure in et_fiscal_odoo / external_payment_gateway /
+external_delivery_gateway.
 """
 
+import json
 import logging
+
+import requests
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
+from .mati_demo_data import (
+    ALL_COLORS,
+    ALL_SIZES,
+    COLOR_CODES,
+    COMPANY_NAME,
+    COMPANY_TIN,
+    DEMO_PURCHASE,
+    OPENING_STOCK,
+    POS_CONFIGS,
+    PRICELISTS,
+    PRODUCTS,
+    SHOPS,
+    SUPPLIER_NAME,
+    WHOLESALE_CUSTOMER,
+    build_barcode,
+    build_sku,
+)
+
 _logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# The demo dataset. Every number the demo script quotes comes from here.
-# ---------------------------------------------------------------------------
-COMPANY_NAME = "Mati's Shoes PLC"
-COMPANY_TIN = "0012345678"
-
-SUPPLIER_NAME = "ABC Footwear Factory"
-
-COLOR_VALUES = ["Black", "White"]
-SIZE_VALUES = ["41", "42"]
-
-# product code -> (name, sku prefix, sales price, cost, barcode product index)
-PRODUCTS = {
-    "samba": {
-        "name": "Adidas Samba",
-        "sku_prefix": "SAM",
-        "list_price": 6000.0,
-        "standard_price": 3200.0,
-        "barcode_index": 0,
-    },
-    "airmax": {
-        "name": "Nike Air Max",
-        "sku_prefix": "AIR",
-        "list_price": 7500.0,
-        "standard_price": 4100.0,
-        "barcode_index": 1,
-    },
-}
-
-COLOR_CODES = {"Black": ("BLK", 0), "White": ("WHT", 1)}
-
-WAREHOUSES = [
-    ("Mati Main Warehouse", "MAIN"),
-    ("Shop 1 Retail", "SHOP1"),
-    ("Shop 2 Wholesale", "SHOP2"),
-]
-
-# sku -> {warehouse code: opening quantity}
-#
-# SAM-BLK-42 deliberately opens at 10 in the main warehouse: the purchase
-# demo receives 20 more and the expected result is exactly 30.
-OPENING_STOCK = {
-    "SAM-BLK-41": {"MAIN": 20, "SHOP1": 5, "SHOP2": 8},
-    "SAM-BLK-42": {"MAIN": 10, "SHOP1": 3, "SHOP2": 6},
-    "SAM-WHT-41": {"MAIN": 18, "SHOP1": 7, "SHOP2": 4},
-    "SAM-WHT-42": {"MAIN": 12, "SHOP1": 2, "SHOP2": 9},
-    "AIR-BLK-41": {"MAIN": 14, "SHOP1": 4, "SHOP2": 3},
-    "AIR-BLK-42": {"MAIN": 11, "SHOP1": 6, "SHOP2": 5},
-    "AIR-WHT-41": {"MAIN": 9, "SHOP1": 3, "SHOP2": 2},
-    "AIR-WHT-42": {"MAIN": 16, "SHOP1": 5, "SHOP2": 7},
-}
-
-# One product identity, four selling contexts. No duplicated products.
-PRICELISTS = {
-    "retail": {"name": "Retail Pricelist", "samba": 6000.0, "airmax": 7500.0, "min_qty": 1},
-    "online": {"name": "Online Pricelist", "samba": 6200.0, "airmax": 7700.0, "min_qty": 1},
-    "wholesale": {"name": "Wholesale Pricelist", "samba": 5300.0, "airmax": 6600.0, "min_qty": 1},
-}
-WHOLESALE_BULK = {"samba": 5000.0, "airmax": 6200.0, "min_qty": 20}
-
-# Variant-specific vendor prices, as quoted in the demo script.
-VENDOR_PRICES = {"SAM-BLK-42": 3200.0, "SAM-WHT-42": 3100.0}
-VENDOR_DEFAULT_PRICE = {"samba": 3150.0, "airmax": 4100.0}
-
-POS_CONFIGS = [
-    ("Shop 1 Retail POS", "SHOP1", "retail"),
-    ("Shop 2 Wholesale POS", "SHOP2", "wholesale"),
-]
-
-
-def ean13_check_digit(base12: str) -> str:
-    """Standard EAN-13 check digit.
-
-    The demo emits VALID barcodes: an invalid check digit would be rejected by
-    a real scanner nomenclature and makes the barcode demo a lie.
-    """
-    total = sum(int(digit) * (3 if index % 2 else 1) for index, digit in enumerate(base12))
-    return str((10 - total % 10) % 10)
-
-
-def build_barcode(product_index: int, color_index: int, size: str) -> str:
-    """Deterministic, valid EAN-13 for one variant.
-
-    Layout: 200 | product(2) | color(1) | size(2) | filler(4) | check(1)
-    The 200 prefix is the range reserved for in-store use.
-    """
-    base12 = f"200{product_index:02d}{color_index:01d}{int(size):02d}0000"
-    return base12 + ean13_check_digit(base12)
 
 
 class MatiDemoSetup(models.TransientModel):
@@ -145,10 +79,10 @@ class MatiDemoSetup(models.TransientModel):
         self._seed_variant_identity(templates)
         self._seed_vendor_prices(templates)
         pricelists = self._seed_pricelists(company, templates)
-        warehouses = self._seed_warehouses(company)
-        self._seed_opening_stock(company, warehouses)
-        self._seed_pos_configs(company, warehouses, pricelists)
-        self._seed_website(pricelists, templates)
+        shops = self._seed_shops(company)
+        self._seed_opening_stock(company, shops)
+        self._seed_pos_configs(company, shops, pricelists)
+        self._seed_website(templates)
         _logger.info("=== Mati demo seeding: done ===")
         return True
 
@@ -159,8 +93,8 @@ class MatiDemoSetup(models.TransientModel):
     def _seed_feature_groups(self):
         """Turn on the Odoo features this demo depends on.
 
-        These are the same switches as the checkboxes in Settings. Without
-        them Odoo hides variants and pricelists in the UI and refuses a second
+        The same switches as the checkboxes in Settings. Without them Odoo
+        hides variants and pricelists in the UI and refuses a second
         warehouse - which would make the demo impossible to show even though
         the data underneath is correct.
         """
@@ -168,7 +102,7 @@ class MatiDemoSetup(models.TransientModel):
             "product.group_product_variant",       # Variants
             "product.group_product_pricelist",     # Pricelists
             "stock.group_stock_multi_locations",   # Storage locations
-            "stock.group_stock_multi_warehouses",  # Multiple warehouses
+            "stock.group_stock_multi_warehouses",  # Multiple warehouses (shops)
         ]
         base_user = self.env.ref("base.group_user", raise_if_not_found=False)
         if not base_user:  # pragma: no cover - defensive
@@ -187,12 +121,11 @@ class MatiDemoSetup(models.TransientModel):
         return True
 
     # ==================================================================
-    # Company and partners
+    # Company - ONE legal entity, ONE TIN, two operational shops
     # ==================================================================
     @api.model
     def _seed_company(self):
         company = self.env.company
-        etb = self.env.ref("base.ETB", raise_if_not_found=False)
         values = {
             "name": COMPANY_NAME,
             "et_fiscal_tin": COMPANY_TIN,
@@ -204,52 +137,13 @@ class MatiDemoSetup(models.TransientModel):
         ethiopia = self.env.ref("base.et", raise_if_not_found=False)
         if ethiopia:
             values["country_id"] = ethiopia.id
+        etb = self.env.ref("base.ETB", raise_if_not_found=False)
         if etb and not etb.active:
             etb.active = True
-        company.write(values)
+        company.write(self._changed_values(company, values))
         # NB: the currency is deliberately NOT set here - see _seed_currency.
         _logger.info("company: %s (TIN %s)", company.name, COMPANY_TIN)
         return company
-
-    @api.model
-    def _seed_currency(self, company):
-        """Set ETB, AFTER the chart of accounts has been loaded.
-
-        ``account.chart.template.try_loading()`` writes the company currency
-        from ``account_fiscal_country_id``, which for the generic chart is the
-        United States. Setting ETB before loading the chart therefore looks
-        like it works and is then silently overwritten with USD - and every
-        price in the demo comes out in dollars.
-
-        Changing the currency is only possible while no journal entry exists,
-        which on a freshly seeded database is the case.
-        """
-        etb = self.env.ref("base.ETB", raise_if_not_found=False)
-        ethiopia = self.env.ref("base.et", raise_if_not_found=False)
-        if not etb:
-            _logger.warning("ETB currency not found; leaving %s", company.currency_id.name)
-            return False
-        if not etb.active:
-            etb.active = True
-
-        values = {}
-        if ethiopia and company.account_fiscal_country_id != ethiopia:
-            values["account_fiscal_country_id"] = ethiopia.id
-        if company.currency_id != etb:
-            values["currency_id"] = etb.id
-        if values:
-            try:
-                company.write(values)
-            except Exception:  # noqa: BLE001
-                _logger.exception("could not switch the company to ETB")
-                return False
-
-        _logger.info(
-            "company currency: %s (fiscal country %s)",
-            company.currency_id.name,
-            company.account_fiscal_country_id.code or "-",
-        )
-        return True
 
     @api.model
     def _seed_accounting(self, company):
@@ -290,6 +184,43 @@ class MatiDemoSetup(models.TransientModel):
         return True
 
     @api.model
+    def _seed_currency(self, company):
+        """Set ETB, AFTER the chart of accounts has been loaded.
+
+        ``account.chart.template.try_loading()`` writes the company currency
+        from ``account_fiscal_country_id``, which for the generic chart is the
+        United States. Setting ETB before loading the chart therefore looks
+        like it works and is then silently overwritten with USD - and every
+        price in the demo comes out in dollars.
+        """
+        etb = self.env.ref("base.ETB", raise_if_not_found=False)
+        ethiopia = self.env.ref("base.et", raise_if_not_found=False)
+        if not etb:
+            _logger.warning("ETB currency not found; leaving %s", company.currency_id.name)
+            return False
+        if not etb.active:
+            etb.active = True
+
+        values = {}
+        if ethiopia and company.account_fiscal_country_id != ethiopia:
+            values["account_fiscal_country_id"] = ethiopia.id
+        if company.currency_id != etb:
+            values["currency_id"] = etb.id
+        if values:
+            try:
+                company.write(values)
+            except Exception:  # noqa: BLE001
+                _logger.exception("could not switch the company to ETB")
+                return False
+
+        _logger.info(
+            "company currency: %s (fiscal country %s)",
+            company.currency_id.name,
+            company.account_fiscal_country_id.code or "-",
+        )
+        return True
+
+    @api.model
     def _get_sale_tax(self, company):
         return self.env["account.tax"].search(
             [
@@ -303,11 +234,7 @@ class MatiDemoSetup(models.TransientModel):
 
     @api.model
     def _seed_product_taxes(self, company, templates):
-        """Put the sale tax on the demo products.
-
-        A fiscal document with no tax block is not a useful demonstration of
-        fiscalization.
-        """
+        """A fiscal document with no tax block is a poor demonstration."""
         tax = self._get_sale_tax(company)
         if not tax:
             _logger.warning("no sale tax available; demo products will be untaxed")
@@ -318,9 +245,14 @@ class MatiDemoSetup(models.TransientModel):
         _logger.info("products: sale tax %s (%.2f%%) applied", tax.name, tax.amount)
         return True
 
+    # ==================================================================
+    # Partners
+    # ==================================================================
     @api.model
     def _seed_partners(self, company):
         Partner = self.env["res.partner"]
+        ethiopia = self.env.ref("base.et", raise_if_not_found=False)
+
         supplier = Partner.search([("name", "=", SUPPLIER_NAME)], limit=1)
         values = {
             "name": SUPPLIER_NAME,
@@ -331,19 +263,17 @@ class MatiDemoSetup(models.TransientModel):
             "phone": "+251 11 111 1111",
             "email": "sales@abcfootwear.example",
         }
-        ethiopia = self.env.ref("base.et", raise_if_not_found=False)
         if ethiopia:
             values["country_id"] = ethiopia.id
         if supplier:
-            supplier.write(values)
+            supplier.write(self._changed_values(supplier, values))
         else:
             supplier = Partner.create(values)
 
-        wholesale_customer = Partner.search([("name", "=", "Bole Shoe Traders")], limit=1)
-        if not wholesale_customer:
+        if not Partner.search([("name", "=", WHOLESALE_CUSTOMER)], limit=1):
             Partner.create(
                 {
-                    "name": "Bole Shoe Traders",
+                    "name": WHOLESALE_CUSTOMER,
                     "company_type": "company",
                     "customer_rank": 1,
                     "city": "Addis Ababa",
@@ -354,20 +284,20 @@ class MatiDemoSetup(models.TransientModel):
         return supplier
 
     # ==================================================================
-    # Product model: native templates, attributes and variants
+    # Catalogue: Factory + Model -> template, Colour + Size -> variants
     # ==================================================================
     @api.model
     def _seed_attributes(self):
         Attribute = self.env["product.attribute"]
         Value = self.env["product.attribute.value"]
         result = {}
-        for name, values in (("Color", COLOR_VALUES), ("Size", SIZE_VALUES)):
+        for name, values in (("Color", ALL_COLORS), ("Size", ALL_SIZES)):
             attribute = Attribute.search([("name", "=", name)], limit=1)
             if not attribute:
                 attribute = Attribute.create(
                     {"name": name, "create_variant": "always", "display_type": "radio"}
                 )
-            value_records = self.env["product.attribute.value"]
+            by_name = {}
             for sequence, value_name in enumerate(values):
                 value = Value.search(
                     [("name", "=", value_name), ("attribute_id", "=", attribute.id)], limit=1
@@ -380,59 +310,72 @@ class MatiDemoSetup(models.TransientModel):
                             "sequence": sequence,
                         }
                     )
-                value_records |= value
-            result[name] = (attribute, value_records)
-        _logger.info("attributes: Color(%s) Size(%s)", ", ".join(COLOR_VALUES), ", ".join(SIZE_VALUES))
+                by_name[value_name] = value
+            result[name] = (attribute, by_name)
+        _logger.info("attributes: Color(%s) Size(%s)", ", ".join(ALL_COLORS), ", ".join(ALL_SIZES))
         return result
 
     @api.model
     def _seed_products(self, company, attributes):
+        """One template per Factory + Model. Colour and Size make the variants."""
         Template = self.env["product.template"]
         color_attribute, color_values = attributes["Color"]
         size_attribute, size_values = attributes["Size"]
+        categ = self.env.ref("product.product_category_all")
 
         templates = {}
-        for code, spec in PRODUCTS.items():
-            template = Template.search([("name", "=", spec["name"])], limit=1)
+        for key, spec in PRODUCTS.items():
+            name = f"{spec['factory']} {spec['model']}"
+            template = Template.search([("name", "=", name)], limit=1)
             values = {
-                "name": spec["name"],
+                "name": name,
+                "shoe_factory": spec["factory"],
+                "shoe_model": spec["model"],
                 "type": "consu",
                 "is_storable": True,
-                "list_price": spec["list_price"],
-                "standard_price": spec["standard_price"],
+                "list_price": spec["retail_price"],
+                "standard_price": spec["cost"],
                 "sale_ok": True,
                 "purchase_ok": True,
                 "available_in_pos": True,
-                "categ_id": self.env.ref("product.product_category_all").id,
+                "categ_id": categ.id,
                 "invoice_policy": "order",
             }
             if template:
-                template.write(values)
+                template.write(self._changed_values(template, values))
             else:
                 template = Template.create(values)
 
-            # One attribute line per attribute; Odoo generates the variants.
-            self._ensure_attribute_line(template, color_attribute, color_values)
-            self._ensure_attribute_line(template, size_attribute, size_values)
-            templates[code] = template
+            # Only this model's colours and sizes; Odoo generates the variants.
+            self._ensure_attribute_line(
+                template, color_attribute, [color_values[c] for c in spec["colors"]]
+            )
+            self._ensure_attribute_line(
+                template, size_attribute, [size_values[s] for s in spec["sizes"]]
+            )
+            templates[key] = template
             _logger.info(
-                "product: %s -> %s variants", template.name, len(template.product_variant_ids)
+                "product: %s (factory %s, model %s) -> %s variants",
+                template.name,
+                spec["factory"],
+                spec["model"],
+                len(template.product_variant_ids),
             )
         return templates
 
     @api.model
     def _ensure_attribute_line(self, template, attribute, values):
+        value_ids = [value.id for value in values]
         line = template.attribute_line_ids.filtered(lambda l: l.attribute_id == attribute)
         if line:
-            missing = values - line.value_ids
-            if missing:
-                line.value_ids = [(4, value.id) for value in missing]
+            if set(line.value_ids.ids) != set(value_ids):
+                line.value_ids = [(6, 0, value_ids)]
             return line
         return self.env["product.template.attribute.line"].create(
             {
                 "product_tmpl_id": template.id,
                 "attribute_id": attribute.id,
-                "value_ids": [(6, 0, values.ids)],
+                "value_ids": [(6, 0, value_ids)],
             }
         )
 
@@ -440,23 +383,24 @@ class MatiDemoSetup(models.TransientModel):
     def _seed_variant_identity(self, templates):
         """Give every concrete variant its SKU and barcode.
 
-        SKU and barcode are different things: the SKU is how the business names
-        the variant, the barcode is what a scanner reads. Both resolve to the
-        same product.product.
+        SKU and barcode are different things: the SKU is how the business
+        names the variant, the barcode is what a scanner reads. Mati generates
+        barcodes in external label software - Odoo's job is only to store the
+        same value against the right variant.
         """
         assigned = 0
-        for code, template in templates.items():
-            spec = PRODUCTS[code]
+        for key, template in templates.items():
+            spec = PRODUCTS[key]
             for variant in template.product_variant_ids:
                 color = self._variant_attribute_value(variant, "Color")
                 size = self._variant_attribute_value(variant, "Size")
                 if not color or not size:
                     continue
-                color_code, color_index = COLOR_CODES[color]
-                sku = f"{spec['sku_prefix']}-{color_code}-{size}"
-                barcode = build_barcode(spec["barcode_index"], color_index, size)
-                if variant.default_code != sku or variant.barcode != barcode:
-                    variant.write({"default_code": sku, "barcode": barcode})
+                sku = build_sku(spec, color, size)
+                barcode = build_barcode(spec["barcode_index"], COLOR_CODES[color][1], size)
+                values = self._changed_values(variant, {"default_code": sku, "barcode": barcode})
+                if values:
+                    variant.write(values)
                 assigned += 1
                 _logger.info("variant: %s -> SKU %s barcode %s", variant.display_name, sku, barcode)
         _logger.info("variant identity assigned for %s variants", assigned)
@@ -484,9 +428,10 @@ class MatiDemoSetup(models.TransientModel):
         SupplierInfo = self.env["product.supplierinfo"]
         supplier = self.env["res.partner"].search([("name", "=", SUPPLIER_NAME)], limit=1)
         if not supplier:
-            return
+            return False
 
-        for code, template in templates.items():
+        for key, template in templates.items():
+            spec = PRODUCTS[key]
             existing = SupplierInfo.search(
                 [
                     ("partner_id", "=", supplier.id),
@@ -498,41 +443,28 @@ class MatiDemoSetup(models.TransientModel):
             values = {
                 "partner_id": supplier.id,
                 "product_tmpl_id": template.id,
-                "price": VENDOR_DEFAULT_PRICE[code],
+                "price": spec["cost"],
                 "min_qty": 1,
                 "delay": 7,
             }
             if existing:
-                existing.write(values)
+                existing.write(self._changed_values(existing, values))
             else:
                 SupplierInfo.create(values)
-
-        for sku, price in VENDOR_PRICES.items():
-            variant = self.env["product.product"].search([("default_code", "=", sku)], limit=1)
-            if not variant:
-                continue
-            existing = SupplierInfo.search(
-                [("partner_id", "=", supplier.id), ("product_id", "=", variant.id)], limit=1
-            )
-            values = {
-                "partner_id": supplier.id,
-                "product_tmpl_id": variant.product_tmpl_id.id,
-                "product_id": variant.id,
-                "price": price,
-                "min_qty": 1,
-                "delay": 7,
-            }
-            if existing:
-                existing.write(values)
-            else:
-                SupplierInfo.create(values)
-            _logger.info("vendor price: %s = %.2f from %s", sku, price, supplier.name)
+            _logger.info("vendor price: %s = %.2f from %s", template.name, spec["cost"], supplier.name)
+        return True
 
     # ==================================================================
-    # Pricing: native pricelists, one product identity
+    # Pricing: two contexts, one product identity
     # ==================================================================
     @api.model
     def _seed_pricelists(self, company, templates):
+        """Retail and wholesale, priced per model - not per variant.
+
+        All colours and sizes of one Factory + Model share the same price,
+        which is how Mati actually sells. One rule per template therefore
+        covers every variant of it.
+        """
         Pricelist = self.env["product.pricelist"]
         Item = self.env["product.pricelist.item"]
         currency = company.currency_id
@@ -544,48 +476,30 @@ class MatiDemoSetup(models.TransientModel):
                 "name": spec["name"],
                 "currency_id": currency.id,
                 "company_id": company.id,
-                "sequence": {"retail": 10, "online": 20, "wholesale": 30}[key],
+                "sequence": spec["sequence"],
             }
             # `selectable` is contributed by website_sale; only set it if present.
             if "selectable" in Pricelist._fields:
                 values["selectable"] = True
+
             if pricelist:
-                pricelist.write(values)
+                pricelist.write(self._changed_values(pricelist, values))
             else:
                 pricelist = Pricelist.create(values)
 
-            for product_code, template in templates.items():
-                self._ensure_pricelist_item(
-                    Item, pricelist, template, spec[product_code], spec["min_qty"]
-                )
+            for product_key, template in templates.items():
+                price = PRODUCTS[product_key][spec["field"]]
+                self._ensure_pricelist_item(Item, pricelist, template, price)
+                _logger.info("pricelist %s: %s = %.2f", spec["name"], template.name, price)
             result[key] = pricelist
-            _logger.info("pricelist: %s", pricelist.name)
-
-        # Quantity break: the same variant is cheaper by the case.
-        wholesale = result["wholesale"]
-        for product_code, template in templates.items():
-            self._ensure_pricelist_item(
-                Item,
-                wholesale,
-                template,
-                WHOLESALE_BULK[product_code],
-                WHOLESALE_BULK["min_qty"],
-            )
-            _logger.info(
-                "pricelist: %s bulk rule %s+ units = %.2f",
-                wholesale.name,
-                WHOLESALE_BULK["min_qty"],
-                WHOLESALE_BULK[product_code],
-            )
         return result
 
     @api.model
-    def _ensure_pricelist_item(self, Item, pricelist, template, price, min_qty):
+    def _ensure_pricelist_item(self, Item, pricelist, template, price):
         existing = Item.search(
             [
                 ("pricelist_id", "=", pricelist.id),
                 ("product_tmpl_id", "=", template.id),
-                ("min_quantity", "=", min_qty),
                 ("applied_on", "=", "1_product"),
             ],
             limit=1,
@@ -596,46 +510,61 @@ class MatiDemoSetup(models.TransientModel):
             "product_tmpl_id": template.id,
             "compute_price": "fixed",
             "fixed_price": price,
-            "min_quantity": min_qty,
+            "min_quantity": 1,
         }
         if existing:
-            existing.write(values)
+            changed = self._changed_values(existing, values)
+            if changed:
+                existing.write(changed)
             return existing
         return Item.create(values)
 
     # ==================================================================
-    # Locations: native warehouses
+    # Shops. No central warehouse: the supplier delivers to the shop.
     # ==================================================================
     @api.model
-    def _seed_warehouses(self, company):
+    def _seed_shops(self, company):
+        """Two shops, each its own stock location and its own receipts.
+
+        Odoo creates one warehouse with the company; that one becomes Shop 1
+        rather than being left behind as an unused "Main Warehouse". Mati has
+        no central warehouse and the demo must not imply one.
+        """
         Warehouse = self.env["stock.warehouse"]
         result = {}
         existing = Warehouse.search([("company_id", "=", company.id)], order="id")
 
-        for index, (name, code) in enumerate(WAREHOUSES):
+        for index, shop in enumerate(SHOPS):
             warehouse = Warehouse.search(
-                [("code", "=", code), ("company_id", "=", company.id)], limit=1
+                [("code", "=", shop["code"]), ("company_id", "=", company.id)], limit=1
             )
             if not warehouse and index == 0 and existing:
-                # Reuse the warehouse Odoo created with the company rather than
-                # leaving an orphan "YourCompany" warehouse behind.
                 warehouse = existing[0]
-                warehouse.write({"name": name, "code": code})
+                warehouse.write({"name": shop["name"], "code": shop["code"]})
             elif not warehouse:
                 warehouse = Warehouse.create(
-                    {"name": name, "code": code, "company_id": company.id}
+                    {"name": shop["name"], "code": shop["code"], "company_id": company.id}
                 )
             else:
-                warehouse.write({"name": name})
-            result[code] = warehouse
-            _logger.info("warehouse: %s (%s) stock location %s", name, code, warehouse.lot_stock_id.complete_name)
+                changed = self._changed_values(warehouse, {"name": shop["name"]})
+                if changed:
+                    warehouse.write(changed)
+            result[shop["code"]] = warehouse
+            _logger.info(
+                "shop: %s (%s) stock %s, receipts %s",
+                shop["name"],
+                shop["code"],
+                warehouse.lot_stock_id.complete_name,
+                warehouse.in_type_id.display_name,
+            )
         return result
 
     # ==================================================================
     # Opening stock: native inventory adjustments, never direct writes
     # ==================================================================
     @api.model
-    def _seed_opening_stock(self, company, warehouses):
+    def _seed_opening_stock(self, company, shops):
+        """Quantity is stock at a shop, not product master data."""
         Quant = self.env["stock.quant"]
         applied = 0
         for sku, quantities in OPENING_STOCK.items():
@@ -643,8 +572,8 @@ class MatiDemoSetup(models.TransientModel):
             if not variant:
                 _logger.warning("opening stock: no variant for SKU %s", sku)
                 continue
-            for warehouse_code, quantity in quantities.items():
-                warehouse = warehouses.get(warehouse_code)
+            for shop_code, quantity in quantities.items():
+                warehouse = shops.get(shop_code)
                 if not warehouse:
                     continue
                 location = warehouse.lot_stock_id
@@ -653,15 +582,12 @@ class MatiDemoSetup(models.TransientModel):
                     continue
 
                 # Inventory adjustment: Odoo creates the stock move from the
-                # inventory-loss location. This is the native mechanism and it
-                # leaves a proper audit trail.
+                # inventory-loss location. Native mechanism, proper audit trail.
                 quant = Quant.with_context(inventory_mode=True).search(
                     [("product_id", "=", variant.id), ("location_id", "=", location.id)], limit=1
                 )
                 if quant:
-                    quant.with_context(inventory_mode=True).write(
-                        {"inventory_quantity": quantity}
-                    )
+                    quant.with_context(inventory_mode=True).write({"inventory_quantity": quantity})
                 else:
                     quant = Quant.with_context(inventory_mode=True).create(
                         {
@@ -672,35 +598,41 @@ class MatiDemoSetup(models.TransientModel):
                     )
                 quant.with_context(inventory_mode=True).action_apply_inventory()
                 applied += 1
-                _logger.info("opening stock: %s @ %s = %s", sku, warehouse_code, quantity)
-        _logger.info("opening stock applied for %s product/location pairs", applied)
+                _logger.info("opening stock: %s @ %s = %s", sku, shop_code, quantity)
+        _logger.info("opening stock applied for %s product/shop pairs", applied)
         return applied
 
     # ==================================================================
-    # Point of sale
+    # Point of sale - one till per shop
     # ==================================================================
     @api.model
-    def _seed_pos_configs(self, company, warehouses, pricelists):
+    def _seed_pos_configs(self, company, shops, pricelists):
         Config = self.env["pos.config"]
+        # Both tills can reach both pricelists, so a wholesale sale can be rung
+        # up at Shop 1 without duplicating a single product.
+        available = [pricelists[key].id for key in ("retail", "wholesale") if key in pricelists]
 
-        for name, warehouse_code, pricelist_key in POS_CONFIGS:
-            # One cash payment method per till, not one shared between them.
-            payment_methods = self._ensure_pos_payment_method(company, warehouse_code)
-            warehouse = warehouses.get(warehouse_code)
-            pricelist = pricelists.get(pricelist_key)
-            if not warehouse or not pricelist:
+        for spec in POS_CONFIGS:
+            warehouse = shops.get(spec["shop"])
+            default_pricelist = pricelists.get(spec["default_pricelist"])
+            if not warehouse or not default_pricelist:
                 continue
 
-            config = Config.search([("name", "=", name), ("company_id", "=", company.id)], limit=1)
+            # One cash payment method per till, never shared between them.
+            payment_methods = self._ensure_pos_payment_method(company, spec["shop"])
+
+            config = Config.search(
+                [("name", "=", spec["name"]), ("company_id", "=", company.id)], limit=1
+            )
             picking_type = warehouse.out_type_id
             values = {
-                "name": name,
+                "name": spec["name"],
                 "company_id": company.id,
                 # This is what makes the sale decrement THIS shop's stock.
                 "picking_type_id": picking_type.id,
                 "use_pricelist": True,
-                "pricelist_id": pricelist.id,
-                "available_pricelist_ids": [(6, 0, [pricelist.id])],
+                "pricelist_id": default_pricelist.id,
+                "available_pricelist_ids": [(6, 0, available)],
             }
             if payment_methods:
                 values["payment_method_ids"] = [(6, 0, payment_methods.ids)]
@@ -717,17 +649,17 @@ class MatiDemoSetup(models.TransientModel):
                     except UserError as exc:
                         _logger.warning(
                             "POS %s not updated (%s): %s",
-                            name,
+                            spec["name"],
                             ", ".join(sorted(changed)),
                             exc,
                         )
             else:
                 config = Config.create(values)
             _logger.info(
-                "pos: %s -> picking type %s, pricelist %s",
-                name,
-                picking_type.display_name,
-                pricelist.name,
+                "pos: %s -> %s stock, default pricelist %s",
+                spec["name"],
+                warehouse.code,
+                default_pricelist.name,
             )
         return True
 
@@ -737,8 +669,7 @@ class MatiDemoSetup(models.TransientModel):
 
         Idempotent seeding means a second run writes nothing at all - not
         merely that it produces the same end state. Several models (pos.config
-        being the strict one) reject writes that would otherwise be harmless
-        no-ops.
+        being the strict one) reject writes that would otherwise be no-ops.
         """
         changed = {}
         for key, value in values.items():
@@ -808,22 +739,10 @@ class MatiDemoSetup(models.TransientModel):
     # Website / e-commerce (only if website_sale is installed)
     # ==================================================================
     @api.model
-    def _seed_website(self, pricelists, templates):
+    def _seed_website(self, templates):
         if "website" not in self.env:
             _logger.info("website not installed; skipping e-commerce configuration")
             return False
-
-        online = pricelists.get("online")
-        website = self.env["website"].search([], limit=1)
-        if website and online:
-            # Same catalog, same variants, same stock - only the price context
-            # differs. No separate e-commerce product database.
-            if "pricelist_id" in self.env["website"]._fields:
-                try:
-                    website.write({"company_id": self.env.company.id})
-                except Exception:  # noqa: BLE001
-                    _logger.warning("could not set the website company")
-
         published = 0
         for template in templates.values():
             if "is_published" in template._fields and not template.is_published:
@@ -833,7 +752,7 @@ class MatiDemoSetup(models.TransientModel):
         return True
 
     # ==================================================================
-    # Demo helper actions (the buttons used while sitting with the client)
+    # Demo helper actions
     # ==================================================================
     @api.model
     def action_seed(self):
@@ -844,63 +763,112 @@ class MatiDemoSetup(models.TransientModel):
     def action_reset_demo(self):
         """Return to the seeded opening state.
 
-        Cancels demo purchase orders and transfers created during the demo and
-        re-applies the opening inventory. Fiscal transactions are deliberately
-        NOT deleted: destroying a registration history is exactly what a fiscal
-        system must never do.
+        Closes POS sessions, cancels demo purchase orders and open transfers,
+        re-applies the opening inventory and restores the mock providers.
+
+        Fiscal transactions are deliberately NOT deleted: destroying a
+        registration history is exactly what a fiscal system must never do.
         """
         company = self.env.company
-        warehouses = {
-            warehouse.code: warehouse
-            for warehouse in self.env["stock.warehouse"].search([("company_id", "=", company.id)])
-        }
 
-        orders = self.env["purchase.order"].search(
+        # Closing a session is a two-step dance and the second step complains if
+        # the first already finished it. Judge by the end state, not by whether
+        # a call raised - a demo reset that prints warnings it does not mean
+        # undermines confidence in the demo.
+        for session in self.env["pos.session"].search([("state", "!=", "closed")]):
+            for step in ("action_pos_session_closing_control", "action_pos_session_close"):
+                if session.state == "closed":
+                    break
+                try:
+                    getattr(session, step)()
+                except Exception:  # noqa: BLE001
+                    pass
+            session.invalidate_recordset(["state"])
+            if session.state != "closed":
+                _logger.warning(
+                    "POS session %s is still %s; close it from the UI", session.name, session.state
+                )
+
+        for order in self.env["purchase.order"].search(
             [("state", "in", ("draft", "sent", "to approve", "purchase"))]
-        )
-        for order in orders:
+        ):
+            # A purchase whose goods actually arrived cannot be cancelled, and
+            # should not be: the receipt is real history. The opening stock is
+            # restored by the inventory adjustment below regardless.
+            if any(picking.state == "done" for picking in order.picking_ids):
+                _logger.info("purchase order %s was received; leaving it as history", order.name)
+                continue
             try:
                 order.button_cancel()
             except Exception:  # noqa: BLE001
                 _logger.warning("could not cancel purchase order %s", order.name)
 
-        pickings = self.env["stock.picking"].search([("state", "not in", ("done", "cancel"))])
-        for picking in pickings:
+        for picking in self.env["stock.picking"].search([("state", "not in", ("done", "cancel"))]):
             try:
                 picking.action_cancel()
             except Exception:  # noqa: BLE001
                 _logger.warning("could not cancel picking %s", picking.name)
 
-        self._seed_opening_stock(company, warehouses)
+        shops = {
+            warehouse.code: warehouse
+            for warehouse in self.env["stock.warehouse"].search([("company_id", "=", company.id)])
+        }
+        self._seed_opening_stock(company, shops)
+        self._set_fiscal_failure_mode(False)
         return self._notify(_("Demo reset to the seeded opening state."))
 
     @api.model
     def action_toggle_fiscal_failure(self):
         """Flip the mock fiscal provider between working and failing."""
-        client = self.env["et.fiscal.gateway.client"]
-        config = client._get_config()
-        import json
-
-        import requests
-
-        url = f"{config['base_url']}/api/v1/admin/mock/fiscal/failure-mode"
-        headers = {"X-API-Key": config["api_key"], "Content-Type": "application/json"}
-        current = requests.get(url, headers=headers, timeout=config["timeout"]).json()
-        target = not current.get("failure_mode", False)
-        requests.post(
-            url, data=json.dumps({"enabled": target}), headers=headers, timeout=config["timeout"]
-        )
+        current = self._get_fiscal_failure_mode()
+        target = not current
+        self._set_fiscal_failure_mode(target)
         return self._notify(
             _("Mock fiscal provider failure mode is now %s.") % ("ON" if target else "OFF")
         )
 
+    # ==================================================================
+    # Gateway control / status (used by the integration status screen)
+    # ==================================================================
     @api.model
-    def _notify(self, message):
-        return {
-            "type": "ir.actions.client",
-            "tag": "display_notification",
-            "params": {"type": "success", "title": _("Mati Demo"), "message": message, "sticky": False},
-        }
+    def _gateway_config(self):
+        return self.env["et.fiscal.gateway.client"]._get_config()
+
+    @api.model
+    def _gateway_request(self, method, path, payload=None):
+        config = self._gateway_config()
+        headers = {"X-API-Key": config["api_key"], "Content-Type": "application/json"}
+        response = requests.request(
+            method,
+            f"{config['base_url']}{path}",
+            data=json.dumps(payload) if payload is not None else None,
+            headers=headers,
+            timeout=config["timeout"],
+        )
+        response.raise_for_status()
+        return response.json()
+
+    @api.model
+    def _get_fiscal_failure_mode(self):
+        try:
+            return bool(
+                self._gateway_request("GET", "/api/v1/admin/mock/fiscal/failure-mode").get(
+                    "failure_mode"
+                )
+            )
+        except Exception:  # noqa: BLE001
+            return False
+
+    @api.model
+    def _set_fiscal_failure_mode(self, enabled):
+        try:
+            self._gateway_request(
+                "POST", "/api/v1/admin/mock/fiscal/failure-mode", {"enabled": bool(enabled)}
+            )
+            return True
+        except Exception:  # noqa: BLE001
+            _logger.warning("could not reach the gateway to set fiscal failure mode")
+            return False
 
     # ==================================================================
     # Introspection used by the demo script and verification
@@ -909,7 +877,7 @@ class MatiDemoSetup(models.TransientModel):
     def demo_snapshot(self):
         """Current stock and prices for the demo SKUs, as plain data."""
         company = self.env.company
-        warehouses = {
+        shops = {
             warehouse.code: warehouse
             for warehouse in self.env["stock.warehouse"].search([("company_id", "=", company.id)])
         }
@@ -922,24 +890,32 @@ class MatiDemoSetup(models.TransientModel):
                 continue
             stock[sku] = {
                 code: Quant._get_available_quantity(variant, warehouse.lot_stock_id)
-                for code, warehouse in warehouses.items()
+                for code, warehouse in sorted(shops.items())
             }
 
         prices = {}
-        samba = self.env["product.product"].search([("default_code", "=", "SAM-BLK-42")], limit=1)
-        if samba:
+        demo_variant = self.env["product.product"].search(
+            [("default_code", "=", DEMO_PURCHASE["sku"])], limit=1
+        )
+        if demo_variant:
             for key, spec in PRICELISTS.items():
                 pricelist = self.env["product.pricelist"].search(
                     [("name", "=", spec["name"])], limit=1
                 )
                 if pricelist:
-                    prices[key] = pricelist._get_product_price(samba, 1.0)
-            wholesale = self.env["product.pricelist"].search(
-                [("name", "=", PRICELISTS["wholesale"]["name"])], limit=1
-            )
-            if wholesale:
-                prices["wholesale_bulk"] = wholesale._get_product_price(
-                    samba, float(WHOLESALE_BULK["min_qty"])
-                )
+                    prices[key] = pricelist._get_product_price(demo_variant, 1.0)
 
-        return {"stock": stock, "prices": prices}
+        return {"stock": stock, "prices": prices, "sku": DEMO_PURCHASE["sku"]}
+
+    @api.model
+    def _notify(self, message):
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "success",
+                "title": _("Mati Demo"),
+                "message": message,
+                "sticky": False,
+            },
+        }

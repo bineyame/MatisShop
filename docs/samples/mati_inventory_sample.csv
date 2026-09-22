@@ -1,0 +1,7 @@
+factory,model,color,size,shop,quantity,retail_price,wholesale_price,cost,barcode
+Zala,2147,Black,39,Shop 1,12,6000,5200,3400,2000003900008
+Zala,2147,Black,39,Shop 2,5,6000,5200,3400,2000003900008
+Zala,2147,Black,40,Shop 1,8,6000,5200,3400,2000004000004
+Zala,2147,White,39,Shop 1,4,6000,5200,3400,2000013900005
+Rasdashen,218,Brown,42,Shop 1,6,4800,4100,2700,2000124200001
+Kangaroo,C1,Black,40,Shop 2,2,5500,4700,3100,2000204000002

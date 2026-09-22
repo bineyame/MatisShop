@@ -34,18 +34,18 @@ Columns:
 | Incoming shipment / receipt | Yes | Yes | No | No | `stock.picking` |
 | Goods receipt increases stock | Yes | No | No | No | `stock.move` / `stock.quant` |
 | **Inventory** |
-| Multi-warehouse | Yes | Yes | No | No | `stock.warehouse` |
+| Multi-shop (warehouse per shop) | Yes | Yes | No | No | `stock.warehouse` |
 | Location hierarchy | Yes | Yes | No | No | `stock.location` |
 | Stock per location | Yes | Yes | No | No | `stock.quant` |
-| Internal transfers | Yes | Yes | No | No | `stock.picking` (internal) |
+| Internal transfers | Yes | available, unused | No | No | Mati receives supplier → shop directly |
 | Inventory adjustments | Yes | Yes | No | No | `stock.quant` inventory mode |
 | Stock move audit trail | Yes | No | No | No | `stock.move.line` |
 | Reordering rules | Yes | not used | No | No | `stock.warehouse.orderpoint` |
 | **Pricing** |
 | Pricelists | Yes | Yes | No | No | `product.pricelist` |
 | Multiple pricelists per product | Yes | Yes | No | No | `product.pricelist.item` |
-| Quantity break pricing | Yes | Yes | No | No | `item.min_quantity` |
-| Per-customer pricing | Yes | not used | No | No | `partner.property_product_pricelist` |
+| Quantity break pricing | Yes | available, unused | No | No | `item.min_quantity` — Mati prices per model |
+| Per-customer pricing | Yes | available, unused | No | No | `partner.property_product_pricelist` |
 | **Selling** |
 | Point of sale | Yes | Yes | No | No | `pos.config`, `pos.order` |
 | POS bound to a shop's stock | Yes | Yes | No | No | `pos.config.picking_type_id` |
@@ -70,6 +70,11 @@ Columns:
 | Retry after provider outage | **No** | No | **Yes** | **Yes** | `ir.cron` + gateway retries |
 | Fiscal audit trail | Partial | No | **Yes** | **Yes** | chatter + `integration_requests` |
 | Company TIN | **No** | Yes | **Yes** | No | field added to `res.company` |
+| Factory / Model as product metadata | **No** | Yes | **Yes** | No | fields added to `product.template` |
+| Shop-level sales attribution | Yes | Yes | No | No | `pos.order.config_id` |
+| Shop-level stock reporting | Yes | Yes | No | No | `stock.quant` by location |
+| Integration status screen | **No** | No | **Yes** | No | `mati.integration.status` |
+| Spreadsheet normalization | **No** | No | No | No | `tools/normalize_mati_inventory.py` |
 | **Payment rails** |
 | Payment provider framework | Yes | Yes | No | No | `payment.provider` |
 | Payment transaction lifecycle | Yes | Yes | No | No | `payment.transaction` |
@@ -104,6 +109,10 @@ Ethiopian systems that Odoo has never heard of.
 
 | Temptation | Why not |
 |---|---|
+| Multi-company for the two shops | They are one legal entity with one TIN. Multi-company would create fake financial separation and break consolidated reporting |
+| A central warehouse | Mati has none. Stock goes supplier → shop. Inventing a hub would model a business that does not exist |
+| Factory as a product attribute | A shoe has exactly one factory. As an attribute it would multiply every variant for nothing |
+| A price per variant | All sizes of a model share a price. Per-variant rules would be eight records where one belongs |
 | A custom "shop stock" model | `stock.quant` per location already does this |
 | Separate retail and wholesale products | Pricelists exist; duplicate products destroy inventory truth |
 | A separate e-commerce catalog | `website_sale` sells the same `product.product` |

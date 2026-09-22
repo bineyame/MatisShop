@@ -73,6 +73,7 @@ switch ($Target.ToLower()) {
         Write-Host "  bootstrap      create and populate the demo database"
         Write-Host "  seed           re-run demo seeding (idempotent)"
         Write-Host "  reset          restore the seeded opening state"
+        Write-Host "  demo-reset     full demo restore (re-seed + reset + providers)"
         Write-Host "  verify         run the full end-to-end verification"
         Write-Host "  test           run every test suite"
         Write-Host "  test-gateway   run the gateway test suite"
@@ -105,6 +106,7 @@ switch ($Target.ToLower()) {
     "bootstrap" { Invoke-Bash "./scripts/bootstrap.sh" }
     "seed" { Invoke-Bash "./scripts/seed_demo.sh" }
     "reset" { Invoke-Bash "./scripts/reset_demo.sh" }
+    "demo-reset" { Invoke-Bash "./scripts/demo_reset.sh" }
     "verify" { Invoke-Bash "./scripts/verify.sh" }
     "health" { Invoke-Bash "./scripts/health.sh" }
     "test-gateway" {

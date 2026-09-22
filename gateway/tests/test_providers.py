@@ -15,13 +15,14 @@ from app.config import get_settings
 from app.domain.errors import ProviderNotConfigured, ValidationError
 from app.providers.delivery.base import DeliveryProvider
 from app.providers.delivery.mock import MockDeliveryProvider
-from app.providers.delivery.placeholders import KlikProvider
+from app.providers.delivery.provider_a import ProviderADeliveryProvider
 from app.providers.fiscal.base import FiscalProvider
 from app.providers.fiscal.mock import MockFiscalProvider
 from app.providers.fiscal.placeholders import AccreditedFiscalProvider, MoRFiscalProvider
 from app.providers.payment.base import PaymentProvider
 from app.providers.payment.mock import MockPaymentProvider
-from app.providers.payment.placeholders import ArifPayProvider, ChapaProvider, TelebirrProvider
+from app.providers.payment.provider_a import ProviderAPaymentProvider
+from app.providers.payment.provider_b import ProviderBPaymentProvider
 from app.providers.registry import (
     get_delivery_provider,
     get_fiscal_provider,
@@ -37,11 +38,10 @@ from tests.conftest import delivery_payload, fiscal_payload, payment_payload
         (FiscalProvider, MoRFiscalProvider),
         (FiscalProvider, AccreditedFiscalProvider),
         (PaymentProvider, MockPaymentProvider),
-        (PaymentProvider, ArifPayProvider),
-        (PaymentProvider, ChapaProvider),
-        (PaymentProvider, TelebirrProvider),
+        (PaymentProvider, ProviderAPaymentProvider),
+        (PaymentProvider, ProviderBPaymentProvider),
         (DeliveryProvider, MockDeliveryProvider),
-        (DeliveryProvider, KlikProvider),
+        (DeliveryProvider, ProviderADeliveryProvider),
     ],
 )
 def test_provider_implements_its_contract(base, implementation):
@@ -59,10 +59,9 @@ def test_provider_implements_its_contract(base, implementation):
     [
         MoRFiscalProvider,
         AccreditedFiscalProvider,
-        ArifPayProvider,
-        ChapaProvider,
-        TelebirrProvider,
-        KlikProvider,
+        ProviderAPaymentProvider,
+        ProviderBPaymentProvider,
+        ProviderADeliveryProvider,
     ],
 )
 def test_real_provider_placeholders_declare_what_they_need(implementation):
@@ -70,33 +69,38 @@ def test_real_provider_placeholders_declare_what_they_need(implementation):
     assert implementation.blockers, "placeholder must document what is still missing"
 
 
-async def test_unimplemented_fiscal_provider_raises_not_configured(session):
-    provider = MoRFiscalProvider(get_settings(), session)
+def test_unimplemented_fiscal_provider_fails_on_selection(session):
+    """Selecting it is enough to fail - you do not have to wait for a sale."""
     with pytest.raises(ProviderNotConfigured) as excinfo:
-        await provider.register(_fiscal_request())
+        MoRFiscalProvider(get_settings(), session)
     assert "MOR_FISCAL_BASE_URL" in str(excinfo.value.detail["required_settings"])
 
 
-async def test_unimplemented_payment_provider_raises_not_configured(session):
-    provider = ArifPayProvider(get_settings(), session)
+def test_unimplemented_payment_provider_fails_on_selection(session):
     with pytest.raises(ProviderNotConfigured):
-        await provider.create_payment(_payment_request())
+        ProviderAPaymentProvider(get_settings(), session)
 
 
-async def test_unimplemented_delivery_provider_raises_not_configured(session):
-    provider = KlikProvider(get_settings(), session)
+def test_unimplemented_delivery_provider_fails_on_selection(session):
     with pytest.raises(ProviderNotConfigured):
-        await provider.create_delivery(_delivery_request())
+        ProviderADeliveryProvider(get_settings(), session)
 
 
-async def test_selecting_a_placeholder_provider_surfaces_a_clear_error(client):
-    """A misconfigured deployment must fail loudly, not silently mock things."""
+async def test_selecting_a_seam_provider_surfaces_a_clear_http_error(client):
+    """A misconfigured deployment must fail loudly, not silently mock things.
+
+    The request is refused outright (501) rather than recorded as a merely
+    "failed" document: the problem is the deployment, not the document, and
+    retrying it would be pointless.
+    """
     response = await client.post(
         "/api/v1/fiscal/documents", json=fiscal_payload(), headers={"X-Provider": "mor"}
     )
+    assert response.status_code == 501
     body = response.json()
-    assert body["status"] == "failed"
-    assert "not implemented" in body["last_error"]
+    assert body["code"] == "provider_not_configured"
+    assert "not implemented" in body["message"]
+    assert body["detail"]["blockers"]
 
 
 def test_unknown_provider_name_is_a_validation_error(session):

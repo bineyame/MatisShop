@@ -28,11 +28,29 @@ class EtFiscalDocumentMixin(models.AbstractModel):
     fiscal_transaction_id = fields.Many2one(
         "et.fiscal.transaction", compute="_compute_fiscal_transaction_ids"
     )
+    # Computed alongside the transaction rather than declared `related`:
+    # a related field hanging off a non-stored, non-searchable compute makes
+    # Odoo warn that it cannot work out what to recompute, on every start.
+    # Reading them through in one pass is both quieter and cheaper.
     fiscal_state = fields.Selection(
-        related="fiscal_transaction_id.state", string="Fiscal Status", readonly=True
+        [
+            ("draft", "Draft"),
+            ("pending", "Pending"),
+            ("submitting", "Submitting"),
+            ("registered", "Registered"),
+            ("failed", "Failed"),
+            ("cancelled", "Cancelled"),
+        ],
+        string="Fiscal Status",
+        compute="_compute_fiscal_transaction_ids",
+        readonly=True,
     )
-    fiscal_irn = fields.Char(related="fiscal_transaction_id.irn", string="IRN", readonly=True)
-    fiscal_qr_payload = fields.Text(related="fiscal_transaction_id.qr_payload", readonly=True)
+    fiscal_irn = fields.Char(
+        string="IRN", compute="_compute_fiscal_transaction_ids", readonly=True
+    )
+    fiscal_qr_payload = fields.Text(
+        compute="_compute_fiscal_transaction_ids", readonly=True
+    )
 
     def _compute_fiscal_transaction_ids(self):
         Transaction = self.env["et.fiscal.transaction"]
@@ -40,8 +58,12 @@ class EtFiscalDocumentMixin(models.AbstractModel):
             transactions = Transaction.search(
                 [("source_model", "=", record._name), ("source_record_id", "=", record.id)]
             )
+            current = transactions[:1]
             record.fiscal_transaction_ids = transactions
-            record.fiscal_transaction_id = transactions[:1]
+            record.fiscal_transaction_id = current
+            record.fiscal_state = current.state if current else False
+            record.fiscal_irn = current.irn if current else False
+            record.fiscal_qr_payload = current.qr_payload if current else False
 
     # ------------------------------------------------------------------
     # To implement per document type

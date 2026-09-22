@@ -17,6 +17,7 @@ ADDONS ?= mati_demo
 .DEFAULT_GOAL := help
 .PHONY: help up down restart logs logs-odoo logs-gateway ps build bootstrap seed reset \
         verify test test-gateway test-odoo shell-odoo shell-gateway psql-odoo psql-gateway \
+        demo-reset \
         health fiscal-fail fiscal-ok clean nuke lint env
 
 help: ## Show this help
@@ -66,6 +67,9 @@ seed: ## Re-run demo seeding (idempotent)
 
 reset: ## Restore the seeded opening state
 	./scripts/reset_demo.sh
+
+demo-reset: ## Full demo restore: re-seed, reset stock, restore mock providers
+	./scripts/demo_reset.sh
 
 verify: ## Run the full end-to-end verification
 	./scripts/verify.sh

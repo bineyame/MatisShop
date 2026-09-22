@@ -29,6 +29,10 @@ COPY gateway/tests ./tests
 # resolves exactly as it does on a developer machine.
 COPY tests /srv/tests
 COPY docs/contracts /srv/docs/contracts
+# The committed example lands where the test harness expects the repo root, so
+# the "mocks are the default" guard stays active inside the image too. It holds
+# placeholder values only - never a real credential.
+COPY .env.example /srv/.env.example
 COPY gateway/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

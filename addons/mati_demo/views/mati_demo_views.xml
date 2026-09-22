@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!--
-        A small control panel for presenting the demo: reseed, reset to the
-        opening state, and flip the mock fiscal provider between working and
-        failing without leaving Odoo.
-    -->
+    <!-- ================================================================
+         Demo control panel
+         ================================================================ -->
     <record id="view_mati_demo_setup_form" model="ir.ui.view">
         <field name="name">mati.demo.setup.form</field>
         <field name="model">mati.demo.setup</field>
@@ -17,69 +15,84 @@
                     </div>
 
                     <div class="alert alert-info" role="alert">
-                        Everything the demo shows about products, stock, purchasing, transfers,
-                        pricing and the point of sale is <strong>vanilla Odoo, configured</strong>.
-                        Only fiscalization, external payment and external delivery are custom,
-                        and those are adapters onto the Integration Gateway.
+                        Products, stock, purchasing, pricing and the point of sale are
+                        <strong>vanilla Odoo, configured</strong>. Only fiscalization, external
+                        payment and external delivery are custom, and those are adapters onto
+                        the Integration Gateway.
                     </div>
 
                     <div class="alert alert-warning" role="alert">
                         <strong>DEMO FISCAL REGISTRATION - NOT PRODUCTION CERTIFICATION.</strong>
-                        Fiscal registration goes to a mock provider and has no legal validity.
+                        Fiscal, payment and delivery all run against mock providers.
                     </div>
 
                     <group string="Demo Controls">
                         <button name="action_seed" type="object" class="btn-primary"
                                 string="Re-seed Demo Data"
-                                help="Idempotent: running it again changes nothing."/>
+                                help="Idempotent: running it again writes nothing."/>
                         <button name="action_reset_demo" type="object" class="btn-secondary"
                                 string="Reset to Opening State"
-                                confirm="Cancel open purchase orders and transfers, then restore the seeded opening stock?"/>
+                                confirm="Close POS sessions, cancel open purchase orders and transfers, then restore the seeded opening stock?"/>
                         <button name="action_toggle_fiscal_failure" type="object"
                                 class="btn-warning"
                                 string="Toggle Mock Fiscal Failure Mode"
                                 help="Force the mock fiscal provider to fail so failure and retry can be demonstrated."/>
                     </group>
 
+                    <group string="Mati's Confirmed Model">
+                        <div colspan="2">
+                            <table class="table table-sm">
+                                <tbody>
+                                    <tr><td><strong>Factory + Model</strong></td><td>product template (Zala 2147)</td></tr>
+                                    <tr><td><strong>Color + Size</strong></td><td>product variants (Black / 39)</td></tr>
+                                    <tr><td><strong>Retail + Wholesale</strong></td><td>two pricelists, one product identity</td></tr>
+                                    <tr><td><strong>Quantity</strong></td><td>stock at a shop, not product data</td></tr>
+                                    <tr><td><strong>Supplier</strong></td><td>delivers directly to a shop</td></tr>
+                                    <tr><td><strong>One company / TIN</strong></td><td>two operational shops</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </group>
+
                     <group string="Seeded Opening Stock">
                         <div colspan="2">
                             <table class="table table-sm">
                                 <thead>
-                                    <tr>
-                                        <th>SKU</th><th>Main WH</th><th>Shop 1</th><th>Shop 2</th>
-                                    </tr>
+                                    <tr><th>SKU</th><th>Shop 1</th><th>Shop 2</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>SAM-BLK-41</td><td>20</td><td>5</td><td>8</td></tr>
-                                    <tr><td>SAM-BLK-42</td><td>10</td><td>3</td><td>6</td></tr>
-                                    <tr><td>SAM-WHT-41</td><td>18</td><td>7</td><td>4</td></tr>
-                                    <tr><td>SAM-WHT-42</td><td>12</td><td>2</td><td>9</td></tr>
+                                    <tr><td>ZALA-2147-BLK-39</td><td>12</td><td>5</td></tr>
+                                    <tr><td>ZALA-2147-BLK-40</td><td>8</td><td>6</td></tr>
+                                    <tr><td>ZALA-2147-WHT-39</td><td>4</td><td>7</td></tr>
+                                    <tr><td>ZALA-2147-WHT-40</td><td>3</td><td>4</td></tr>
+                                    <tr><td>RASD-218-BRN-41</td><td>5</td><td>2</td></tr>
+                                    <tr><td>RASD-218-BRN-42</td><td>6</td><td>3</td></tr>
+                                    <tr><td>KANG-C1-BLK-40</td><td>9</td><td>2</td></tr>
+                                    <tr><td>KANG-C1-BLK-41</td><td>7</td><td>4</td></tr>
                                 </tbody>
                             </table>
                             <p class="text-muted">
-                                SAM-BLK-42 opens at 10 in the main warehouse on purpose:
-                                the purchase demo receives 20 more and the expected result
-                                is exactly 30.
+                                ZALA-2147-BLK-39 opens at 12 in Shop 1 on purpose: the purchase
+                                demo receives 20 more and the expected result is exactly 32.
                             </p>
                         </div>
                     </group>
 
-                    <group string="Seeded Pricing (Adidas Samba)">
+                    <group string="Seeded Pricing">
                         <div colspan="2">
                             <table class="table table-sm">
                                 <thead>
-                                    <tr><th>Context</th><th>Price (ETB)</th></tr>
+                                    <tr><th>Model</th><th>Retail (ETB)</th><th>Wholesale (ETB)</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td>Retail</td><td>6,000</td></tr>
-                                    <tr><td>Online</td><td>6,200</td></tr>
-                                    <tr><td>Wholesale</td><td>5,300</td></tr>
-                                    <tr><td>Wholesale, 20+ units</td><td>5,000</td></tr>
+                                    <tr><td>Zala 2147</td><td>6,000</td><td>5,200</td></tr>
+                                    <tr><td>Rasdashen 218</td><td>4,800</td><td>4,100</td></tr>
+                                    <tr><td>Kangaroo C1</td><td>5,500</td><td>4,700</td></tr>
                                 </tbody>
                             </table>
                             <p class="text-muted">
-                                One product, one variant, one stock identity. Four prices,
-                                through native pricelists. No duplicated products.
+                                Every colour and size of one model shares its price. One product
+                                identity, two selling contexts - no duplicated products.
                             </p>
                         </div>
                     </group>
@@ -96,15 +109,150 @@
         <field name="target">current</field>
     </record>
 
+    <!-- ================================================================
+         Integration status
+         ================================================================ -->
+    <record id="view_mati_integration_status_form" model="ir.ui.view">
+        <field name="name">mati.integration.status.form</field>
+        <field name="model">mati.integration.status</field>
+        <field name="arch" type="xml">
+            <form string="Integration Status">
+                <header>
+                    <button name="action_refresh" type="object" string="Refresh"
+                            class="btn-primary"/>
+                    <button name="action_toggle_fiscal_failure" type="object"
+                            string="Toggle Mock Fiscal Failure" class="btn-warning"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>Integration Status</h1>
+                    </div>
+
+                    <div class="alert alert-success" role="alert" invisible="not gateway_reachable">
+                        Integration Gateway is reachable. <field name="gateway_message" readonly="1" nolabel="1"/>
+                    </div>
+                    <div class="alert alert-danger" role="alert" invisible="gateway_reachable">
+                        Integration Gateway is NOT reachable.
+                        <field name="gateway_message" readonly="1" nolabel="1"/>
+                        <div>Sales still complete and stock still moves; fiscal documents queue and retry.</div>
+                    </div>
+
+                    <group>
+                        <group string="Active Providers">
+                            <field name="fiscal_provider" readonly="1"/>
+                            <field name="payment_provider" readonly="1"/>
+                            <field name="delivery_provider" readonly="1"/>
+                            <field name="gateway_url" readonly="1"/>
+                        </group>
+                        <group string="Fiscal Documents">
+                            <field name="fiscal_registered" readonly="1"/>
+                            <field name="fiscal_pending" readonly="1"/>
+                            <field name="fiscal_failed" readonly="1"/>
+                            <field name="fiscal_failure_mode" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <div class="alert alert-warning" role="alert" invisible="not fiscal_failure_mode">
+                        <strong>Mock fiscal failure mode is ON.</strong>
+                        Every fiscal registration will fail until it is switched off. Sales are
+                        unaffected.
+                    </div>
+
+                    <group string="Provider Selection">
+                        <div colspan="2" class="text-muted">
+                            <p>
+                                Providers are chosen by configuration in the gateway environment,
+                                never in Odoo, and never in this screen. Switching rails is:
+                            </p>
+                            <pre>PAYMENT_PROVIDER=mock      →  PAYMENT_PROVIDER=provider_a
+DELIVERY_PROVIDER=mock     →  DELIVERY_PROVIDER=provider_a
+FISCAL_PROVIDER=mock       →  FISCAL_PROVIDER=&lt;accredited provider&gt;</pre>
+                            <p>
+                                plus that provider's credentials, then restart the gateway.
+                                No Odoo change, no database migration. Credentials never appear
+                                in Odoo and are never shown here.
+                            </p>
+                        </div>
+                    </group>
+
+                    <group string="Drill Down">
+                        <button name="action_open_fiscal_transactions" type="object"
+                                string="All Fiscal Transactions" class="btn-link"/>
+                        <button name="action_open_failed_fiscal" type="object"
+                                string="Failed Fiscal Transactions" class="btn-link"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_mati_integration_status" model="ir.actions.act_window">
+        <field name="name">Integration Status</field>
+        <field name="res_model">mati.integration.status</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_mati_integration_status_form"/>
+        <field name="target">current</field>
+    </record>
+
+    <!-- ================================================================
+         Product form: Factory / Model as master data
+         ================================================================ -->
+    <record id="view_product_template_form_mati" model="ir.ui.view">
+        <field name="name">product.template.form.inherit.mati</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <field name="categ_id" position="before">
+                <field name="shoe_factory" placeholder="e.g. Zala"/>
+                <field name="shoe_model" placeholder="e.g. 2147"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_product_template_search_mati" model="ir.ui.view">
+        <field name="name">product.template.search.inherit.mati</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_search_view"/>
+        <field name="arch" type="xml">
+            <field name="name" position="after">
+                <field name="shoe_factory" string="Factory"/>
+                <field name="shoe_model" string="Model"/>
+            </field>
+            <filter name="categ_id" position="after">
+                <filter name="group_by_factory" string="Factory"
+                        context="{'group_by': 'shoe_factory'}"/>
+            </filter>
+        </field>
+    </record>
+
+    <!-- ================================================================
+         Menus - the demo navigation
+         ================================================================ -->
     <menuitem id="menu_mati_demo_root" name="Mati Demo" sequence="5"
-              groups="base.group_system"/>
+              groups="base.group_user"/>
 
     <menuitem id="menu_mati_demo_controls" name="Demo Controls"
               parent="menu_mati_demo_root"
               action="action_mati_demo_setup" sequence="10"/>
 
+    <menuitem id="menu_mati_integration_status" name="Integration Status"
+              parent="menu_mati_demo_root"
+              action="action_mati_integration_status" sequence="20"/>
+
     <menuitem id="menu_mati_demo_fiscal" name="Fiscal Transactions"
               parent="menu_mati_demo_root"
-              action="et_fiscal_odoo.action_et_fiscal_transaction" sequence="20"/>
+              action="et_fiscal_odoo.action_et_fiscal_transaction" sequence="30"/>
+
+    <menuitem id="menu_mati_demo_products" name="Products"
+              parent="menu_mati_demo_root"
+              action="product.product_template_action_all" sequence="40"/>
+
+    <menuitem id="menu_mati_demo_stock" name="Stock by Shop"
+              parent="menu_mati_demo_root"
+              action="stock.action_view_quants" sequence="50"/>
+
+    <menuitem id="menu_mati_demo_purchase" name="Purchase Orders"
+              parent="menu_mati_demo_root"
+              action="purchase.purchase_form_action" sequence="60"/>
 
 </odoo>

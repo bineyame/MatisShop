@@ -24,6 +24,7 @@ from app.domain.contracts import ErrorResponse
 from app.domain.errors import GatewayError
 from app.observability import configure_logging, get_logger
 from app.persistence.database import init_engine, shutdown_engine
+from app.providers.registry import validate_provider_configuration
 
 logger = get_logger(__name__)
 
@@ -40,6 +41,11 @@ is a legally valid Ethiopian fiscal registration.
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.gateway_log_level, settings.service_name)
+
+    # Fail fast: a real provider selected without its credentials must stop the
+    # deployment, not silently fall back to a mock (spec §22).
+    validate_provider_configuration(settings)
+
     init_engine(settings)
     logger.info(
         "gateway.startup",

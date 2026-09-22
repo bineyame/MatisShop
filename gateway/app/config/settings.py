@@ -53,6 +53,25 @@ class Settings(BaseSettings):
     mock_payment_mode: Literal["auto_success", "manual", "always_fail"] = "auto_success"
     mock_delivery_mode: Literal["auto_advance", "manual", "always_fail"] = "auto_advance"
 
+    # --- real provider credentials -------------------------------------------
+    # Rail-scoped, so a payment key cannot accidentally be read by the delivery
+    # adapter. Empty by default: the bundled providers are mocks and need none.
+    # These NEVER appear in Odoo - they live inside the gateway boundary only.
+    payment_provider_a_base_url: str = ""
+    payment_provider_a_api_key: str = ""
+    payment_provider_a_merchant_id: str = ""
+
+    payment_provider_b_base_url: str = ""
+    payment_provider_b_api_key: str = ""
+
+    delivery_provider_a_base_url: str = ""
+    delivery_provider_a_api_key: str = ""
+    delivery_provider_a_merchant_id: str = ""
+
+    fiscal_provider_base_url: str = ""
+    fiscal_provider_api_key: str = ""
+    fiscal_provider_device_id: str = ""
+
     # --- optional outbound ERP notification ----------------------------------
     # When set, provider webhooks are forwarded to this ERP endpoint. Optional:
     # the reference flow is Odoo polling the gateway, which needs no inbound

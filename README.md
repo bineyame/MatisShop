@@ -166,54 +166,76 @@ step. It exits non-zero if anything is wrong.
 ## Seeded data
 
 Deterministic, so the demo script and the verification can assert exact numbers.
-Seeding is idempotent — running it twice changes nothing.
+Seeding is idempotent — running it twice writes nothing.
 
-**Company:** Mati's Shoes PLC · TIN `0012345678` · ETB · Addis Ababa
-**Supplier:** ABC Footwear Factory
+**One legal company, one TIN, two operational shops.** Multi-company is
+deliberately *not* used: the shops are branches of one business, not separate
+legal entities.
 
-**Products** — two templates, Color × Size, eight variants:
+**Company:** Mati's Shoes · TIN `0012345678` · ETB · Addis Ababa
+**Supplier:** ABC Footwear Factory — delivers **directly to a shop**; there is
+no central warehouse.
 
-| SKU | Barcode (valid EAN-13) | Variant |
-|---|---|---|
-| `SAM-BLK-41` | `2000004100001` | Adidas Samba / Black / 41 |
-| `SAM-BLK-42` | `2000004200008` | Adidas Samba / Black / 42 |
-| `SAM-WHT-41` | `2000014100008` | Adidas Samba / White / 41 |
-| `SAM-WHT-42` | `2000014200005` | Adidas Samba / White / 42 |
-| `AIR-*` | `20001041…` | Nike Air Max, same four combinations |
+**Catalogue** — Factory + Model is the template, Colour + Size are the variants:
 
-The SKU and the barcode are different identifiers for the same variant. Barcodes
-carry correct EAN-13 check digits, so they scan.
+| SKU | Barcode | Variant | Retail | Wholesale |
+|---|---|---|---:|---:|
+| `ZALA-2147-BLK-39` | `2000003900008` | Zala 2147 / Black / 39 | 6,000 | 5,200 |
+| `ZALA-2147-BLK-40` | `2000004000004` | Zala 2147 / Black / 40 | 6,000 | 5,200 |
+| `ZALA-2147-WHT-39` | `2000013900005` | Zala 2147 / White / 39 | 6,000 | 5,200 |
+| `ZALA-2147-WHT-40` | `2000014000001` | Zala 2147 / White / 40 | 6,000 | 5,200 |
+| `RASD-218-BRN-41` | `2000124100004` | Rasdashen 218 / Brown / 41 | 4,800 | 4,100 |
+| `RASD-218-BRN-42` | `2000124200001` | Rasdashen 218 / Brown / 42 | 4,800 | 4,100 |
+| `KANG-C1-BLK-40` | `2000204000002` | Kangaroo C1 / Black / 40 | 5,500 | 4,700 |
+| `KANG-C1-BLK-41` | `2000204100009` | Kangaroo C1 / Black / 41 | 5,500 | 4,700 |
 
-**Opening stock:**
+Every colour and size of one model shares its price — Mati prices by model.
+Factory and Model are **template metadata**, not variant attributes: a shoe is
+made by exactly one factory, so making it an attribute would multiply the
+variants for no reason.
 
-| SKU | Main WH | Shop 1 | Shop 2 |
-|---|---:|---:|---:|
-| `SAM-BLK-41` | 20 | 5 | 8 |
-| `SAM-BLK-42` | **10** | 3 | 6 |
-| `SAM-WHT-41` | 18 | 7 | 4 |
-| `SAM-WHT-42` | 12 | 2 | 9 |
+SKU and barcode are different identifiers. Mati generates barcodes in external
+label software; Odoo's job is to hold the same value against the right variant.
+The demo values are valid EAN-13 so a real scanner reads them.
 
-`SAM-BLK-42` opens at 10 on purpose: the purchase demo receives 20 more and the
-expected result is exactly 30.
+**Opening stock** — quantity is stock *at a shop*, never product master data:
 
-**Pricing** — one product identity, four prices:
+| SKU | Shop 1 | Shop 2 |
+|---|---:|---:|
+| `ZALA-2147-BLK-39` | **12** | 5 |
+| `ZALA-2147-BLK-40` | 8 | 6 |
+| `ZALA-2147-WHT-39` | 4 | 7 |
+| `ZALA-2147-WHT-40` | 3 | 4 |
+| `RASD-218-BRN-41` | 5 | 2 |
+| `RASD-218-BRN-42` | 6 | 3 |
+| `KANG-C1-BLK-40` | 9 | 2 |
+| `KANG-C1-BLK-41` | 7 | 4 |
 
-| Context | `SAM-BLK-42` |
-|---|---:|
-| Retail | 6,000 ETB |
-| Online | 6,200 ETB |
-| Wholesale | 5,300 ETB |
-| Wholesale, 20+ units | 5,000 ETB |
+`ZALA-2147-BLK-39` opens at 12 in Shop 1 on purpose: the purchase demo receives
+20 more and the expected result is exactly 32.
 
-**Vendor prices:** `SAM-BLK-42` = 3,200 ETB · `SAM-WHT-42` = 3,100 ETB
+**Vendor prices:** Zala 2147 = 3,400 · Rasdashen 218 = 2,700 · Kangaroo C1 = 3,100 ETB
 
-**Locations:** Mati Main Warehouse (`MAIN`), Shop 1 Retail (`SHOP1`),
-Shop 2 Wholesale (`SHOP2`)
+**Shops:** Shop 1 (`SHOP1`), Shop 2 (`SHOP2`) — each with its own stock
+location, its own receipts and its own till.
 
-**Point of sale:** *Shop 1 Retail POS* (retail pricelist, Shop 1 stock) and
-*Shop 2 Wholesale POS* (wholesale pricelist, Shop 2 stock)
+**Point of sale:** *Shop 1 POS* (defaults to retail) and *Shop 2 POS* (defaults
+to wholesale). Both tills can reach **both** pricelists, so a wholesale sale at
+Shop 1 needs no duplicate product.
 
----
+### Importing Mati's own spreadsheet
+
+His sheet is a flat report, not a domain model. `tools/normalize_mati_inventory.py`
+translates it:
+
+```bash
+python tools/normalize_mati_inventory.py inventory.csv --report
+python tools/normalize_mati_inventory.py inventory.csv -o normalized.json --strict
+```
+
+It refuses to guess: a row without a shop is an error, because "quantity" means
+stock at a shop. It also flags one model priced inconsistently across its
+variants. Sample input: `docs/samples/mati_inventory_sample.csv`.
 
 ## Demo walkthrough
 
